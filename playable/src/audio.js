@@ -139,6 +139,20 @@ const DEBRIS_UNDUCK_T = 0.3;   // a retry is a hard cut back to the round; no re
 // short enough that a fresh look at the board starts the climb again.
 const MERGE_RESET = 2.5;
 
+// The merge one-shot's level, and it is measured rather than dialled by ear.
+//
+// The six clips are authored hot: RMS ~0.24 and PEAKS OVER UNITY, 1.41 to 1.68 in float. At the
+// old 0.8 they were the loudest thing in the round — around -13 dBFS effective, above the
+// biggest rockfall (stone_4, -13.8) and above the win sting (-14.2). That is upside down: this
+// is the most frequently fired sound in the game and it was sitting on top of the events.
+//
+// It was also clipping. 1.677 x 0.8 x the 0.85 master is 1.14, i.e. past full scale on every
+// climax of the ladder, so the reward sound was arriving distorted as well as loud. 0.70 is
+// where the hottest clip stops clipping; 0.55 is under that with room to spare and puts the
+// merge at about -17.6 dBFS — a comfortable 4 dB under the drain hits, which is the right way
+// round for a small frequent reward against a big occasional event.
+const MERGE_VOLUME = 0.55;
+
 // The shortest gap allowed between two grunts. The clip is 1.38s and it is a voice: two of them
 // overlapping is one man twice, which is worse than a missed cue. Comfortably longer than the
 // clip, so a second phase loss during the first grunt is dropped rather than stacked.
@@ -287,7 +301,7 @@ export class Audio {
     const src = this.ctx.createBufferSource();
     src.buffer = buf;
     const g = this.ctx.createGain();
-    g.gain.value = 0.8;
+    g.gain.value = MERGE_VOLUME;
     src.connect(g).connect(this.master);
     src.start();
   }

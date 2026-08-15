@@ -198,6 +198,22 @@ const PANIC_BEAT_FAST = 0.62;
 // The cost of decoupling them is that the flash and the thump drift apart by the difference in
 // the two lead-ins, which is 8ms at the fast end. Not a real number on a 60Hz screen.
 const PANIC_RATE_MAX = 1.2;
+
+// How loud the thump is, and it is above unity on purpose — a GainNode is a multiplier, not a
+// fader with a ceiling at 1.
+//
+// heartbeat.mp3 is quiet where the rest of the bank is hot: RMS 0.098 against the merge clips'
+// 0.24, so at the old 0.55 it landed around -25 dBFS — some 11 dB under the merge and 12 under
+// the rockfall, which is buried rather than quiet. 1.3 puts it at about -18, roughly level with
+// the merge, and there is headroom for it: the clip PEAKS at only 0.511, so 0.511 x 1.3 x the
+// 0.85 master is 0.56 and it is nowhere near clipping even at the top of a beat.
+//
+// KNOWN LIMIT, on a phone speaker specifically. 97% of this clip's energy is below 120 Hz, which
+// is the band a phone driver mostly cannot make — so gain buys much less here than it does on
+// headphones, and there is a ceiling on what this constant alone can fix. If it still does not
+// carry on a handset, the answer is a re-cut with some upper-mid content in it, or an EQ stage,
+// not a bigger number: turning up a frequency the speaker cannot reproduce only spends headroom.
+const PANIC_VOLUME = 1.3;
 // Where the frame sits at the top of a beat and between beats. It never goes to zero while the
 // panic lasts — a frame that blinks off reads as a glitch, where one that breathes reads as him.
 const PANIC_ALPHA = 0.85;
@@ -1068,31 +1084,60 @@ export class Game {
     gsap.to(this.titleGroup, { alpha: show ? 1 : 0, duration: show ? 0.25 : 0.45 });
   }
 
+  // Restart the round.
+  //
+  // RE-ENTRANT BY CONSTRUCTION, which is what the guard is for. The last line calls
+  // `sdk.retry()`, and that is not the notification it reads as: @smoud/playable-sdk's `retry()`
+  // is `emitEvent("retry")`, which dispatches SYNCHRONOUSLY to every registered listener. main.js
+  // registers exactly one —
+  //
+  //     sdk.on('retry', () => game.reset());
+  //
+  // — so reset() ends by calling reset(), for ever. The page freezes with the music still playing,
+  // because Web Audio is on its own thread and does not care that the main one is gone.
+  //
+  // Two lines in two files, each correct alone, and both present since the first commit. It lay
+  // dormant because the SDK never finished initialising until vite.config gained its `define`
+  // block, and an SDK that never initialised has no listeners to dispatch to. Wiring up the CTA
+  // is what armed it, which is why this broke a long way from where it was introduced.
+  //
+  // Neither call may simply be deleted: the player's TRY AGAIN comes in here and the network does
+  // want telling, and the network's own replay button emits `retry` and the game does have to
+  // restart. So the second entry is made a no-op instead. A plain flag is sufficient precisely
+  // BECAUSE the dispatch is synchronous — the re-entry always arrives while this call is still on
+  // the stack. If the SDK ever defers its emit, this guard stops working and the cycle is back.
   reset() {
-    gsap.killTweensOf(this.cursor);
-    this.board.reset();
-    this.hero.place();
-    // Before setPush, which is a no-op while the pillar is down — a retry after a win would
-    // otherwise start the round with no pillar and the shaft wall still opened out to where its
-    // rubble was.
-    this.scene.restorePillar();
-    this.scene.restoreTrap();
-    this.scene.setPush(0);
-    this._setDanger(false);
-    this.audio.duckMusic(false);
-    this.audio.duckDebris(false);
-    this.winGroup.visible = false;
-    this.failGroup.visible = false;
-    this.chest.reset();
-    this.sparkles.reset();
-    this.confetti.reset();
-    this.rope.reset();
-    // A retry snaps him back onto his mark rather than dropping him again, so there is no impact
-    // to raise dust — but a retry taken during the first second of a round can land while the
-    // last one's is still in the air.
-    this.dust.reset();
-    this._resetState();
-    try { this.sdk?.retry?.(); } catch (e) {}
+    if (this._resetting) return;
+    this._resetting = true;
+    try {
+      gsap.killTweensOf(this.cursor);
+      this.board.reset();
+      this.hero.place();
+      // Before setPush, which is a no-op while the pillar is down — a retry after a win would
+      // otherwise start the round with no pillar and the shaft wall still opened out to where its
+      // rubble was.
+      this.scene.restorePillar();
+      this.scene.restoreTrap();
+      this.scene.setPush(0);
+      this._setDanger(false);
+      this.audio.duckMusic(false);
+      this.audio.duckDebris(false);
+      this.winGroup.visible = false;
+      this.failGroup.visible = false;
+      this.chest.reset();
+      this.sparkles.reset();
+      this.confetti.reset();
+      this.rope.reset();
+      // A retry snaps him back onto his mark rather than dropping him again, so there is no impact
+      // to raise dust — but a retry taken during the first second of a round can land while the
+      // last one's is still in the air.
+      this.dust.reset();
+      this._resetState();
+      try { this.sdk?.retry?.(); } catch (e) {}
+    } finally {
+      // In a finally, so a throw anywhere above cannot leave the game permanently unable to retry.
+      this._resetting = false;
+    }
   }
 
   _onFirstMove() {
@@ -1169,7 +1214,7 @@ export class Game {
     this._panicTl = gsap.timeline({ repeat: -1 })
       // Reads _panicRate at fire time, not at build time, so the pitch follows the tempo without
       // the timeline ever being rebuilt.
-      .call(() => this.audio.play('heartbeat', { volume: 0.55, rate: this._panicRate }))
+      .call(() => this.audio.play('heartbeat', { volume: PANIC_VOLUME, rate: this._panicRate }))
       // Placed at PANIC_LEAD rather than appended, so the swell is aligned to the clip's first
       // thump; the release then runs out whatever is left of the beat.
       .to(this.panic, { alpha: PANIC_ALPHA, duration: PANIC_ATTACK, ease: 'power2.out' }, PANIC_LEAD)
