@@ -1,3 +1,19 @@
-*.blend filter=lfs diff=lfs merge=lfs -text
-*.glb filter=lfs diff=lfs merge=lfs -text
-*.fbx filter=lfs diff=lfs merge=lfs -text
+# These were tracked in Git LFS and are not any more, deliberately.
+#
+# GitHub serves LFS files as POINTER STUBS in the "Download ZIP" archive, and to any clone made
+# without git-lfs installed. The four binaries here total 5.8 MB — the rig, its pre-optimisation
+# original, and the Blender scene with its glTF export — so LFS was buying nothing, while
+# guaranteeing that the most common way of getting this repository delivers a 130-byte text file
+# where the character rig should be. The playable would then fall back to the painted placeholder
+# with no error, which is the worst kind of failure: silent, and on the thing the project is about.
+#
+# Keep it that way. Anything genuinely large enough to need LFS does not belong in this repo.
+
+# Treat the binaries as binary, so git never tries to diff or line-ending-convert them.
+*.blend binary
+*.glb   binary
+*.fbx   binary
+*.psd   binary
+*.mp4   binary
+*.mp3   binary
+*.webp  binary
