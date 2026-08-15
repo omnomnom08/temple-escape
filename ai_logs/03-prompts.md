@@ -4,6 +4,12 @@ Verbatim, chronological. Typos included — this is the real trail, not a cleane
 Session-management noise (`continue`, `go`, `yes`, one-word turns) is omitted; everything that
 moved the design or the code is here.
 
+Covers the build through the rubble and PSD work, ending where [`02-build-log.md`](02-build-log.md)
+does. The prompts from there on — the rig, the outro, the trap and the round's UI — are in
+[`04-finishing.md`](04-finishing.md), interleaved with the build notes rather than split from them.
+The ones from *before* this folder existed, including the decisions that made the project 2D and cut
+its first act, are in [`00-origins.md`](00-origins.md).
+
 ---
 
 ## Setting up the delivery
@@ -137,12 +143,30 @@ gives ~7 moves before lockup where 6×8 gives ~11.6.
 > I placed these items off screen cuz they are common for vertical and horisontal placement.
 > that's why bg is square sized
 
-**What this produced.** The layout model — and it is the clearest example in this project of
-why asking beats assuming. The square canvas and the off-frame HUD both looked like errors. I
-had drafted a question offering to "fix" them. They were deliberate: the backdrop is square so
-it cover-scales for both orientations, and the HUD is parked off-frame because it is shared
-between them and anchored at runtime. Landscape support went from unplanned to in scope on
-the strength of one sentence.
+**What this produced.** The layout model, and the clearest example in this project of why asking
+beats assuming.
+
+**The PSD was not a mockup, it was a responsive layout system, and it had been authored as one
+before any of this code existed.** The square canvas means the backdrop cover-scales correctly for
+portrait *and* landscape from a single document. The HUD sits off-frame because it is shared between
+orientations and anchored at runtime, so there is no second set of positions to keep in sync. Both
+of those are the answer to a problem the code had not yet reached.
+
+Recorded because I got it wrong first: both looked like errors, and I had a question drafted
+offering to "fix" them. One sentence took landscape support from unplanned to in scope — not because
+anything was built for it, but because the art already had been. The lesson for me was to ask before
+correcting an author's file; the lesson worth taking from the file itself is that a layout authored
+against the *runtime's* constraints rather than against a single screenshot pays for itself the
+first time the aspect ratio changes.
+
+> yes. the geometry and placing is gonna be same as was in 3d. with changes as spikes and plate. I
+> will create photoshop file with all placements and assets
+
+**What this produced.** A dimension change that cost an art re-author instead of a scene re-derivation.
+Moving the puzzle from 3D to 2D normally means re-establishing every position from scratch; locking
+the geometry to what the 3D scene already had meant the layout was *carried*, which is why the
+painted chamber still reads as the same room the 3D camera framed. See `00-origins.md` for the
+decision it came from.
 
 > don't forget to track ai logs
 
@@ -246,7 +270,8 @@ Recorded because unflagged assumptions are how a restructure quietly loses somet
    naming a deliverable after the licensed property it resembles is not. Same look and feel,
    original name, no trademarked reference anywhere in the build.
 2. **Kept `three` as a dependency and `#three-canvas` in the DOM** despite nothing importing
-   Three today. The character is a rigged glTF, so this is a reserved seam, not leftovers, and
-   it costs nothing in the bundle.
+   Three at the time. The character is a rigged glTF, so this is a reserved seam, not leftovers.
+   *Since resolved:* the rig landed and both are now load-bearing — the canvas is also what puts
+   the spike tips in front of him. See `04-finishing.md`.
 3. **Left `walkthrough.mp4` unmade.** It records the finished playable, so it is the last
-   deliverable, not this one.
+   deliverable, not this one. *Still true.*

@@ -67,7 +67,11 @@ Two files have no browser dependency at all, which is what makes them testable u
 
 ## What came from the template, and what didn't
 
-Seeded from our existing match-3 playable template. Carried over unchanged:
+Seeded from our existing match-3 playable. That project was **lightweight 3D**, and it also held the
+creative's cut first act — see [`00-origins.md`](00-origins.md) for what was there and why the
+dimension changed. What follows is only the inventory.
+
+Carried over unchanged:
 
 | file | why it came across as-is |
 | ---- | ------------------------ |
@@ -78,7 +82,7 @@ Seeded from our existing match-3 playable template. Carried over unchanged:
 | `game.js` | state machine, HUD, retry, CTA — covers the brief's outcome requirements |
 | `hero.js` | tick-driven drop-in, so it cannot stall the state machine |
 | `main.js` | boot, responsive fit, ad-SDK wiring, and the single-file-build fix below |
-| `test/*.mjs` | the 43 assertions that make any of the above trustworthy |
+| `test/*.mjs` | the assertions that make any of the above trustworthy — 43 at the time of writing, 83 now |
 
 **Left behind:** all third-party placeholder art and the module that loaded it. During earlier
 gameplay tuning, art from a shipped commercial creative was used as a clearly-marked stand-in
@@ -572,9 +576,10 @@ that. The reference confirmed the tuning; the physics is ours.
 
 ### Size, honestly
 
-At the end of this pass: **2.04 MB raw / 855 KB gzip**, one self-contained HTML file. (Audio
-and the remaining UI art landed after this and took it to the current 2.52 MB / 1.26 MB — see
-**State** at the foot of this log, which is the number to trust.)
+At the end of this pass: **2.04 MB raw / 855 KB gzip**, one self-contained HTML file. (Audio, the
+remaining UI art and later the character rig all landed after this and took it well past that. The
+root [`README.md`](../README.md) carries the current figure — it is deliberately the only place
+that does, so there is one number to update rather than six.)
 
 Getting there took three separate things, and only one of them was compression:
 
@@ -724,7 +729,7 @@ intent, and they must not sync up.
 nothing left to compress. Neither is a PSD layer, so they cannot go through `layer()`, which
 requires a `manifest.json` entry; effect art is placed by the code that spawns it.
 
-## State
+## State at the end of this log
 
 **Working end to end:** board, wall erosion, rubble inflow and drain, pressure→fail,
 drained→win, retry, responsive fit, ad-SDK hooks, single-file build.
@@ -732,25 +737,34 @@ drained→win, retry, responsive fit, ad-SDK hooks, single-file build.
 **Playable end to end, with the real art.** Scene composed from the PSD, board on its painted
 recess, rubble in the delivered rock art, pillar driven by pressure with the hero riding it,
 gem-tinted match chips and their shine echo, audio, stamina meter, tutorial hand, win and fail
-end cards, retry, CTA. Portrait and landscape both reflow. 71 tests passing (22 match-3 +
-49 debris). 2.52 MB raw / 1.26 MB gzip.
+end cards, retry, CTA. Portrait and landscape both reflow.
+
+Everything after this point — the rigged character, the rope outro, the six-piece trap, the
+stamina badge, the panic frame, the sound toggle, the CTA destination and the asset sweep — is in
+[`04-finishing.md`](04-finishing.md). The two open items named below were both closed there.
 
 **Known flake:** the debris suite is not deterministic. `debris_sim.js` calls `Math.random()` in
 eleven places and its constructor takes no `rng`, unlike `Match3`, which accepts an injectable
-one — so those 49 tests run against fresh random input every time. Observed once as
-`47 passed, 2 failed`, not reproduced in 20 further runs, and the two failures were not
-captured. Worth fixing for the same reason the tests exist: an intermittent red makes a real
-regression easy to dismiss as the flake.
+one — so those tests run against fresh random input every time. Observed once as two failures,
+not reproduced in 20 further runs, and the two failures were not captured. Still true, and still
+worth fixing for the same reason the tests exist: an intermittent red makes a real regression
+easy to dismiss as the flake.
 
-**Placeholder:** the character is the PSD's painted explorer rather than the rigged glTF,
-which has not been delivered. `hero3d.js` is written and fail-soft — dropping `hero.glb` into
-`assets/art/` upgrades him with no code change.
+**Placeholder, at the time of writing:** the character was the PSD's painted explorer rather than
+the rigged glTF, which had not been delivered. `hero3d.js` was written fail-soft so the rig's
+arrival would be a file drop rather than an integration. It arrived — see `04`.
 
-**Not built:** the rope beat of the outro (no rope layer exists in the PSD, so the escape runs
-pillar-release → run to door → end card), a balance pass against real play, and
-`walkthrough.mp4`.
+**Not built, at the time of writing:** the rope beat of the outro, so the escape ran
+pillar-release → run to door → end card. Also built in `04`.
 
-## Character rig — clip list
+Live counts and the current bundle size are in the root [`README.md`](../README.md) rather than
+here, so there is one number to update rather than six.
+
+## Character rig — the clip contract this log was written against
+
+**Superseded. Kept because it is what the loader was built for, and the gap between it and what
+arrived drove a real design change.** The delivered set and its measurements are in `PLAN.md` §3;
+the change is in [`04-finishing.md`](04-finishing.md).
 
 Budget: ≤5k triangles, one material, one 512² atlas, Draco off.
 
@@ -758,11 +772,15 @@ Budget: ≤5k triangles, one material, one 512² atlas, Draco off.
 | ---- | ------------- |
 | `fall` | the drop-in that seats him against the pillar |
 | `brace_idle` | low pressure — planted, holding |
-| `strain` | high pressure — blended against `brace_idle` by the pressure value, which is why this is a rig and not a sprite sheet |
+| `strain` | high pressure — blended against `brace_idle` by the pressure value |
 | `fail` | pillar reaches the spikes |
 | `win` | pillar retracts, he comes off the pillar |
 | `jump` | pushes off toward the rope |
-| `swing` | crossing to the door — loops, so the distance can be tuned without re-exporting |
+| `swing` | crossing to the door |
 
-`jump` and `swing` are new: the outro has him traverse, which the earlier clip list did not
-account for.
+What actually shipped is `idle_0` / `idle_1` / `idle_2` / `push` / `land` / `rope` — three stamina
+states rather than two blend endpoints, one landing clip, one pendulum, and no separate `fail` or
+`win` clip at all. The `brace_idle`↔`strain` weight blend above is the assumption that did not
+survive contact: adjacent delivered poses differ by more than 100° at the upper arm, so a partial
+weight between them puts the limb through a midpoint that is not a pose. It became a three-state
+machine with a cross-fade on transition.

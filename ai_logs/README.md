@@ -4,17 +4,34 @@ How Temple Escape was built with AI assistance.
 
 | file | what's in it |
 | ---- | ------------ |
+| [`00-origins.md`](00-origins.md) | the seed project, and the 3D intro act that was designed, blocked out and cut |
 | [`01-workflow.md`](01-workflow.md) | tools, how the work was split, how AI output was verified |
-| [`02-build-log.md`](02-build-log.md) | what was built, the decisions behind it, what broke |
-| [`03-prompts.md`](03-prompts.md) | the session's prompts, verbatim |
+| [`02-build-log.md`](02-build-log.md) | what was built, the decisions behind it, what broke — through the rubble and PSD work |
+| [`03-prompts.md`](03-prompts.md) | the prompts behind that stretch, verbatim |
+| [`04-finishing.md`](04-finishing.md) | the rig, the outro, the trap and the round's UI — prompts and build notes together |
+
+`02` and `03` split build notes from prompts; `04` merges them, because the later work came in
+short feature-shaped sessions where the prompt, the decision and the bug are one beat. Where `04`
+contradicts `02`, `04` is current — the character was still a painted placeholder and the outro
+still ran him to a door when `02` was written.
 
 ## Starting point
 
-This build did not start from an empty directory. It was seeded from a **match-3 playable
-template of our own** — pure match-3 rules, a granular debris simulation, their Pixi
-renderers, and the headless test suite that covers both. That template was written for this
-kind of creative and carried across deliberately; `02-build-log.md` lists exactly what came
-over, what was left behind, and what was written fresh on top of it.
+This build did not start from an empty directory. It was seeded from a **match-3 playable of our
+own** — pure match-3 rules, a granular debris simulation, their Pixi renderers, and the headless
+test suite that covers both. That project was written for this kind of creative and carried across
+deliberately; `02-build-log.md` lists exactly what came over and what was written fresh on top of
+it.
+
+The seed was **lightweight 3D**, and this one is not. It is also where the creative's first act
+lives: an upper temple room, a chest lit by god rays, a hidden step, and the floor giving way —
+blocked out with a marker-driven camera, then cut so the match-3 loop could be made to feel right.
+The playable delivered here is the second half of that. [`00-origins.md`](00-origins.md) is the
+full account, and it is the reason `assets/source/blender/world.blend` ships.
+
+Earlier still, before this folder existed, there is [`../analysis/`](../analysis/README.md) — the
+pre-production research the build was aimed at, including `PROMPT_LOG.md`, 48 prompts recovered from
+Claude Code's `history.jsonl` after the raw June transcripts hit the 30-day cleanup.
 
 ## The short version
 

@@ -9,15 +9,15 @@
 | **Headless Chrome** | boot and layout verification of the built file |
 | **ChatGPT** | concept art, character design, and the 2D game assets — generated and iterated |
 | **Tripo3D** | image-to-3D: turning the character concept into a mesh |
-| **Blender 4.5** | cleaning up and adjusting the generated mesh, scene authoring, glTF export |
-| **Mixamo** | character animation clips, retargeted onto the explorer rig |
+| **Blender 5.1** | cleaning up and adjusting the generated mesh, scene authoring, glTF export — and, run headlessly, the deform-only re-export that halved the rig |
+| **Mixamo** | the pose library the animation was built from, retargeted onto the explorer rig |
 | **Codex** | separating the flat generated composition into discrete layers |
 | **Photoshop** | final composition — the layers settled into the real layout by hand |
 
 **Who made what.** AI wrote the code, the analysis and this documentation, generated the
 concept and the 2D art, and produced the first pass of the character mesh. A person made
-every design decision, corrected and composited the art, cleaned up the mesh, and recorded
-the audio.
+every design decision, corrected and composited the art, cleaned up the mesh, **animated the
+character**, and recorded the audio.
 
 Nothing in the project is copyrighted third-party material — that constraint drove several
 decisions, including throwing away a set of placeholder art late in the process (see
@@ -47,9 +47,19 @@ handoffs are where it got interesting.
 **The 3D branch.** Tripo3D turns the character concept image straight into a mesh, which
 collapses what is normally the most expensive step in a solo project. What it produces is a
 starting point, not an asset: topology and scale need work in Blender before anything can be
-rigged against it. Animation is Mixamo — retargeted, not keyframed — which is why `strain` is
-authored as an exaggerated `brace_idle` rather than sourced separately: same bone tracks
-means the pressure crossfade is clean.
+rigged against it.
+
+**The animation is authored, not downloaded.** Mixamo supplied the pose library and the retarget
+onto the explorer rig; the three stamina idles were then built from those poses by hand. That is
+the reason they work as a stamina ladder — `idle_0`, `idle_1` and `idle_2` are three readings of
+the same brace at three degrees of exhaustion, which is a thing you have to pose deliberately and
+not something a clip library has an entry for. It is also why they share one bone set, so they
+cross-fade into each other cleanly.
+
+The delivered set is `idle_0` / `idle_1` / `idle_2` / `push` / `land` / `rope`. An earlier plan had
+two poses blended by weight; the authored phases are far enough apart that a partial blend is not a
+pose, so it became a three-state machine instead — `04-finishing.md` has the measurement and
+`PLAN.md` §3 the clip table.
 
 **The 2D branch, and the step that actually mattered.** Generated art arrives *flat* — one
 image with the whole scene baked into it, which is useless for a game where the pillar has to
@@ -85,12 +95,30 @@ Two working rules, both worth recording:
 - **No dead code beside its replacement.** The code is read by other engineers, so superseded
   modules get deleted rather than commented out.
 
+### Running several agents at once
+
+The last stretch ran up to three agents in one working tree — one on the rig, one on the trap art,
+one on the rope — and that needs rules of its own. They were learned by breaking them; the full
+account is in `04-finishing.md`.
+
+- **One agent owns `game.js` at a time.** It is the surface every feature eventually reaches, so
+  the others are told in their prompt which files they may not open, and build their module in
+  isolation until the seam is free. `rope.js` and `dust.js` are self-contained and take everything
+  as arguments for exactly that reason — they were written with no access to their own caller.
+- **Stage explicit paths; never `git add -A`.** A sweeping stage in a shared tree commits somebody
+  else's half-finished work.
+- **Confirm before token-heavy work.** An agent burned a session exploring the rope. Anything
+  expensive now asks first.
+- **Ask for a preview rather than building a harness to look at it.** Measurement is mine;
+  appearance is the author's. Numbers still get measured headlessly — the difference is that a
+  question answerable by looking gets handed over instead of instrumented.
+
 ## How AI output was verified
 
 Ranked by how much they actually caught:
 
 1. **Headless logic tests (`npm test`).** The rules live in modules with no renderer
-   dependency, so they run under plain `node` — 43 assertions across match-3 and the debris
+   dependency, so they run under plain `node` — 83 assertions across match-3 and the debris
    sim. This is where the real defects surfaced; see `02-build-log.md`.
 2. **Isolated harnesses.** The debris simulation ran in a standalone page asserting draw-call
    count, `glError`, and rock counts through a drain before it went near the game.

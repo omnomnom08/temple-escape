@@ -1,20 +1,45 @@
 # Temple Escape — remaining work
 
-**The rig has landed and is integrated.** The character was the long pole of this document and it
-is now off the critical path: he loads, stands in the right place at any aspect ratio, wears his
-texture, and answers to the game's stamina. What is left is scene work — the spikes, the rope
-outro, the intro reveal, the dust.
+**Every numbered item in this document is closed.** The rig landed and is integrated, the spikes
+advance, the rope outro replaced the door run, the reveal shipped (on the ceiling rather than the
+plate wall — see item 6), and the landing dust is in.
+
+What follows is kept as the engineering record rather than a to-do list: the rig's measurements, the
+investigations that cost real time, and the reasoning behind decisions the code can only state as a
+constant. Anything genuinely still open is in **What is actually left**, immediately below.
 
 **State of play**
 
 | | |
 | --- | --- |
-| **Done** | Win card; fail outcome; **the rig — loaded, placed, textured, and driven by stamina** (items 2, 3a–3g) |
-| **Next** | Spikes advance (5); rope outro (4); intro reveal (6a) |
-| **Temporary** | The door-run outro, to be replaced by the rope |
+| **Done** | Everything numbered here: win card; fail outcome (1); Three-canvas viewport (2); the rig (3a–3g); rope outro (4); spikes (5); reveal (6); dust (7) |
+| **Open** | `walkthrough.mp4`; the rig's standoff on a phase change; a balance pass; the bundle |
 
-Build is **3,488.89 kB / 1,689.74 kB gzip**, up 777 kB from 2,711 kB for the rig. The unoptimised
-GLB would have put it near 4.4 MB.
+Build is **3,070.56 kB / 1,517.33 kB gzip** at the time of writing, and moving — a bundle pass is
+underway in a parallel session. The root `README.md` is where the current figure lives; do not add
+a second copy of it here.
+
+## What is actually left
+
+1. **`walkthrough.mp4`** — the last deliverable. It records the finished playable, so it is last by
+   definition.
+   - **Optional second clip: the cut first act.** The 3D intro — upper room, chest under god rays,
+     hidden step, floor gives way — still runs in the seed project and can be captured as reference
+     footage alongside the walkthrough. Two things to do first: `scene3d.js` is no longer imported
+     by that project's `main.js`, and its `world.glb` may be stale, because `world.blend` was
+     re-saved after the last export. Re-export before recording or the footage will not match the
+     .blend that ships here. See `ai_logs/00-origins.md`.
+2. **The rig's standoff still reads as floating on a phase change.** Two real causes were found and
+   fixed — an eased offset that took ~3× as long to arrive as the pose it travelled with, and the
+   recovering direction needing to snap rather than ramp so his hands clear the stone (`hero3d.js`,
+   `PHASE_OFFSET` and the note above `_offsetT`). Better, not right. Deferred deliberately. **Next
+   thing to try:** a per-clip offset rather than a per-phase one — `push` currently borrows phase
+   0's, and it plays whenever he is winning ground, which is exactly when the seam shows.
+3. **A balance pass against real play.** Inflow rate, capacity and start fill are sensible values,
+   not tuned ones.
+4. **The bundle.** In progress elsewhere; audio is the largest remaining block.
+5. **Determinism in the debris tests** — `debris_sim.js` takes no injectable `rng`, unlike
+   `match3.js`.
 
 **Win card — closed.** Went well past the original P3 scope: `WIN` title wired, `OPEN` exported and
 placed (`NEXT_LEVEL` retired), `chest.js` for the lure hop, `sparkle.js` for the glint field,
@@ -95,9 +120,9 @@ setViewport(layout) {
 
 ---
 
-## P1 — The scene around him
+## ~~P1 — The scene around him~~ — DONE
 
-Item 3 is closed; 5 is the cheapest win left and 4 is the biggest.
+All three closed. 5 turned out to be the largest of them and 4 the one that was rebuilt twice.
 
 ### ~~3. Integrate the delivered rig~~ — DONE (3a–3g)
 
@@ -229,9 +254,12 @@ have taken the build from 2.71 MB to ~4.3 MB. Most of it was measurably dead: **
 skeleton joints carried zero vertex weight** — the IK/FK control rig, animated in full by all six
 clips — plus a 163 KB embedded PNG of an image already in the repo at 9 KB as WebP.
 
-Resolved via `assets/art/3d/hero.fbx`, which was exported clean (28 bones, all deform, all
-weighted), converted headlessly through Blender 5.1 and re-exported as glTF with `Images: None`,
-`Only Deform Bones`, no cameras/lights, no Draco.
+Resolved via a clean FBX export (28 bones, all deform, all weighted), converted headlessly through
+Blender 5.1 and re-exported as glTF with `Images: None`, `Only Deform Bones`, no cameras/lights, no
+Draco. *(That `hero.fbx`, and the `hero.glb` it replaced, have since been deleted from the working
+tree — both are in git history if the conversion ever needs redoing. The rig now shipping is
+`hero2.glb`: same skeleton, same six clips keyframe for keyframe, same 2.04u body, mesh cleaned up,
+so every measurement in this section still holds.)*
 
 | | before | after |
 | --- | --- | --- |
@@ -259,9 +287,22 @@ Two follow-ups, neither blocking:
 Direct glTF export from the .blend remains preferable to the FBX route when convenient — FBX
 flattens the action namespace, which is what made the duplicate set ambiguous in the first place.
 
-### 4. Rope outro — Code + small texture, M · now uses the delivered `rope` clip
+### ~~4. Rope outro~~ — DONE, and not the way this section planned it
 
-Replaces `runTo(door)` in `_win()`. The Pixi rope half still needs no GLB and can be built first.
+**Shipped, with the swing solved differently.** The beat below is what was built; the rope itself is
+not. Two simulated versions were tried and thrown away — a Verlet chain, then angular springs, which
+bowed beautifully and then *rang* once the rope was also being pulled onto a moving hand every frame.
+`rope.js` is closed-form instead: each segment offset from the driven angle in proportion to swing
+speed, which bows against the direction of travel and straightens at the ends of the arc, with no
+state to accumulate and nothing that can behave differently at 30fps than at 120. Full account in
+`ai_logs/04-finishing.md`.
+
+The other change: **the caller hands in an `aim`** reporting the rig's actual hand bone, rather than
+the rope reconstructing where his hands are. His x is the braced position plus the phase standoff
+plus the pillar's shove, and all three have been retuned since — reassembling them inside the rope
+would have gone stale immediately.
+
+Replaces `runTo(door)` in `_win()`. The Pixi rope half needed no GLB and was built first.
 
 - **Rope:** Pixi `MeshRope` over a point array, not a sprite sheet — a single tileable strip costs
   single-digit KB against hundreds for a sheet, and the length has to be dynamic anyway to reach
@@ -287,10 +328,24 @@ Three things the delivered clip changes:
 - **It is 2.67s against a ≈1.2s slot.** Its first half-second is a static hang — x and y are flat
   until t≈0.5. Start there and run at `timeScale ≈ 1.3` and the remaining 2.17s fits in ~1.67s.
 
-### 5. Spikes advance on the character — Code, S · best value on the list
+### ~~5. Spikes advance on the character~~ — DONE, and it took a re-export
 
-Half of this is already done — `spikes` is a separate sprite in `scene.js`
-(`BEHIND = ['wall', 'shadow', 'spikes']`), not part of the wall. Only the growth is missing.
+**It was more than "only the growth is missing".** The flattened extract this section was written
+against could not move at all: `wall.png` had the ceiling beam baked into the bars and `spikes.png`
+was the bank already masked down to its tips. Re-exported as six pieces — `top_walls`,
+`top_walls_ceilling`, `spikes_body_back`, `spikes`, `spikes_body_top`, `spikes_mask` — and
+`spikes_mask` (the wall silhouette with the seven socket mouths punched out) is used as an
+**inverse** alpha mask over the rods, so a rod is occluded by the wall it emerges through.
+
+Two things worth keeping:
+
+- **The lifted tips draw on the rig's canvas, not in Pixi.** `#three-canvas` sits above every Pixi
+  layer, so nothing in Pixi can be in front of the hero — and spikes that stop behind him do not
+  read as spikes reaching him. Cost of that, paid explicitly: they are above the end cards too, so
+  the tips are struck when a card comes up.
+- **Travel is `SPIKE_CREEP`, and 40 is the ceiling.** The rods are 108.7 units long from x 310.8
+  against a wall face at 400.2, and `SPIKE_SLAM` adds 45 on top of the creep. At 30 the tail still
+  sits 14 units behind the face; past ~40 it clears the wall during the slam and a hole opens.
 
 - It is placed top-left anchored at x=367, so scaling `scale.x` already extends it rightward, toward
   the hero at x=432. The anchor you want is the one it has.
@@ -301,23 +356,35 @@ Half of this is already done — `spikes` is a separate sprite in `scene.js`
 
 ---
 
-## P2 — Depth and intro
+## ~~P2 — Depth and intro~~ — DONE
 
-### 6. Intro: wall reveal, then fall and land — Code, M · splits
+### ~~6. Intro: reveal, then fall and land~~ — DONE, on a different subject
 
-- **(a) 2D mask reveal of the plate wall** — independent of the rig, do it now. Hooks into
-  `_enterScene()` and `board.show()`, which currently just flips visibility.
+**The reveal shipped on the ceiling beam, not the plate wall**, at the author's direction: a
+rectangular mask sweeping left to right, timed to just after he lands. Same technique, better
+subject — the beam sealing the chamber is the thing that says *you are shut in*, where the plate
+wall is the thing the player is about to attack and is better simply present.
+
+The intro also gained a camera it did not have when this was written: it opens tight on the
+character at 2× and pulls back as he lands, so the first thing the player sees is the man. The
+camera transform is applied to the Pixi world and the Three frustum from one place; the HUD stays on
+the plain layout, so a zoom moves the scene and not the buttons.
+
+- **(a)** superseded as above.
 - **(b) the rig's landing** is item 3e, not this item — the clip is `land`, not `fall`, and its
   contact frame sets `T_FALL`. Note the deliberate design in `hero.js` either way: the drop runs off
   `update(dt)` rather than GSAP so it can never stall the state machine. Keep the clip decorative on
   top of that; do not make landing depend on it.
 - `hero.js:_loadRig` already swaps placeholder for rig, so the wiring is a couple of lines.
 
-### 7. Foreground dust and falling rocks — Code + sprites, M · needs a decision
+### ~~7. Foreground dust~~ — DONE, scoped down
 
-Cheap to build once the layering question is settled: a light particle emitter reusing the existing
-`vfx/` art and the rock sheets already in the bundle. The depth cue is worth it — right now every
-moving thing sits on one plane.
+`dust.js`: one soft puff on the landing, in the rubble's own shade, from `vfx/vfx_smoke.webp` — and
+deliberately not the `vfx_smoke_3-grid4x4.png` sheet sitting beside it in the folder, which is 333 KB
+(~440 KB inlined) for half a second of effect at the very start of the round.
+
+The falling-rocks half was dropped. The layering decision below is what it was waiting on, and it
+resolved itself in the other direction.
 
 ---
 
@@ -328,32 +395,20 @@ See the state-of-play note at the top.
 
 ---
 
-## One decision blocking the dust
+## ~~One decision blocking the dust~~ — RESOLVED as Option A
 
-You asked for dust and rocks "in front of everything but under the walls". There is nothing to be
-under: `walls` is one of the four layers baked into `bg.png` — with `brick_back`, `bg_wall` and
-`bg_fog` — and that composite is drawn first, as the backdrop. So today the walls sit behind every
-moving thing in the scene.
+The question was where dust sits relative to the walls, since `walls` was one of the layers baked
+into the backdrop and so drew behind every moving thing.
 
-- **Option A** — dust is simply a foreground layer over everything, reading as atmosphere close to
-  camera. No re-bake, no extra bundle weight.
-- **Option B (recommended)** — pull `walls` out of the bake, re-bake `bg.png` from three layers, and
-  draw `walls.png` as a foreground occluder above the dust. `walls.png` is already extracted and
-  sitting in `layers/`. Costs a re-bake and one more sprite in the bundle. Pick this if you want the
-  dust to read as falling *inside* the shaft, which is what gives you the depth you are after.
+**Resolved as Option A**, and then the ground moved under Option B entirely. The backdrop was
+re-baked by the author into a single `bg.png` — door shadow and step stone merged in, the gap at the
+top closed — and the separate `walls.png` / `bg_wall.png` / `bg_fog.png` / `door_original_exact.png`
+extracts were deleted along with it. There is no longer a `walls.png` to promote to a foreground
+occluder. The trap's own re-export (item 5) is what ended up carrying the depth: `top_walls` and
+`top_walls_ceilling` are real sprites in front of the backdrop, and the spike tips sit in front of
+the character.
 
----
-
-## How it parallelises
-
-Barely two tracks any more. The rig is delivered, optimised and integrated, so Blender is down to a
-rope strip and some dust sprites — nothing gates the code.
-
-| Phase | Art / Blender | Code |
-| --- | --- | --- |
-| **1 · now** | Rope strip texture | Spikes advance (5) |
-| **2** | Dust sprites | Rope outro end to end (4); wall mask reveal (6a) |
-| **3** | — | Dust and rocks (7), once the layering decision below is made |
+Recover the deleted layers from git history if the occluder idea ever comes back.
 
 ---
 
