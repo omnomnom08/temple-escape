@@ -54,9 +54,11 @@ const PHASE_FADE = 0.3;
 // by eye per phase and no ratio between them survived that. For scale: he is ~200 units tall and
 // the pillar travels 58 in total.
 //
-// 30 is close to the ceiling — much past it and he intersects the pillar sprite rather than
-// bracing on it, and the fix at that point is to move the pillar, not him.
-const PHASE_OFFSET = [-8, 14, 30];
+// Phase 2 has the most room of the three despite being nearest: the tired poses draw his hands
+// in toward his chest, so what would touch the pillar first is idle_0's outstretched arms — and
+// that one stands off at -8. Judge the ceiling against whichever pose reaches furthest, not
+// against whichever number is largest.
+const PHASE_OFFSET = [-8, 14, 36];
 
 // He plays `push` while he is winning ground — i.e. while fatigue is falling, which only
 // happens when the player has cleared plates and the shaft is draining. Debounced at both ends
@@ -236,9 +238,16 @@ class Hero3D {
     this.group.position.set(this._placeX + this._offset, this.H - this._placeY, 0);
   }
 
+  // The whole Three layer holds nothing but the hero, so fading the canvas fades him — cheaper
+  // and far less brittle than walking every material and flipping it to transparent.
+  setOpacity(a) {
+    this.renderer.domElement.style.opacity = a >= 1 ? '' : String(a);
+  }
+
   // One-shots: `land` for the intro, `rope` for the escape. `hold` keeps the last frame instead
   // of handing the body back to the idle machine — right for the escape, wrong for the landing.
-  playOnce(name, { fade = 0.2, hold = false } = {}) {
+  // `startAt` and `timeScale` exist for clips whose authored pacing does not fit the beat.
+  playOnce(name, { fade = 0.2, hold = false, startAt = 0, timeScale = 1 } = {}) {
     const a = this.actions[name];
     if (!a) return Promise.resolve();
 
@@ -251,8 +260,9 @@ class Hero3D {
     a.setLoop(THREE.LoopOnce, 1);
     a.clampWhenFinished = true;
     a.enabled = true;
-    a.setEffectiveTimeScale(1);
+    a.setEffectiveTimeScale(timeScale);
     a.setEffectiveWeight(1);   // see _fadeTo: fadeIn scales this, it does not set it
+    a.time = startAt;          // after reset(), which rewinds to 0
     a.play();
     if (fade > 0) a.fadeIn(fade);
 

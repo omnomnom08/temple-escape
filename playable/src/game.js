@@ -671,14 +671,16 @@ export class Game {
     // The outro, in beats. Nothing is removed from the board — the path was cleared by
     // playing, so sweeping the remainder here would take credit for the player's work.
     //   1. the mass is gone, so the pillar springs off him
-    //   2. he bolts for the door
+    //   2. he swings out on the rope and fades
     //   3. end card
     this._setDanger(false);
     this.audio.play('win');
     await this.scene.releasePillar();
     const door = centerOf('door_original_exact');
-    this.audio.play('door', { volume: 0.7 });   // it opens as he starts running for it
-    await this.hero.runTo(door ? door.x : 887);
+    this.audio.play('door', { volume: 0.7 });   // the way opening, under the start of the swing
+    // The door x is only the fallback target: with the rig present the rope clip carries its own
+    // travel, and this argument goes unused.
+    await this.hero.escape(door ? door.x : 887);
     this.audio.duckMusic(true);
     this.audio.play('winCheer');
     this._showEnd(this.winGroup);

@@ -26,6 +26,23 @@ const TOTAL = T_FALL + T_SQUASH + T_RECOVER; // 0.72s
 const SQUASH_X = 1.18;
 const SQUASH_Y = 0.82;
 
+// The rope escape. The clip is 2.67s and opens on half a second of motionless hang.
+const ROPE_SKIP = 0.5;
+const ROPE_RATE = 1.3;
+const ROPE_FADE = 0.5;
+const ROPE_BLEND = 0.15;   // clip cross-fade, and the ramp that hides the hang below
+
+// The clip hangs him well above where he was standing, and that head start is what made the
+// whole arc sit high. Measured off hero.glb rather than guessed: the hips key at 0.90 model
+// units through idle_0, and the rope clip opens on 1.69 — 0.79u of pure hang. At the rig's
+// scale (the body is 2.04u for a 176-unit-tall figure, so ~86 document units per model unit)
+// that is 68 units of lift he gets for free, before the tween adds any of its own.
+//
+// Subtracting it puts the start of the swing at the height he was standing at, so he leaves
+// from where he stood instead of popping up to meet a rope that is never drawn. The end comes
+// down by the same 68, because this shifts the whole arc rather than reshaping it.
+const ROPE_HANG = 68;
+
 export class Hero {
   constructor({ stage, x, footY, height = 200, stageW = Infinity, stageH = 0 }) {
     this.h = height;
@@ -43,6 +60,7 @@ export class Hero {
 
     this.t = TOTAL;      // already landed until dropIn() rewinds it
     this._onLanded = null;
+    this._opacity = 1;   // one dial over both bodies — see _applyOpacity
     this._layout = null; // last viewport seen; replayed onto the rig when it arrives
 
     this._buildPlaceholder();
@@ -126,7 +144,54 @@ export class Hero {
     this.root.x = this.x + dx;
   }
 
-  // Win beat: the pillar is off him, so he bolts for the door.
+  // Win beat: the way is clear, so he swings out on the rope.
+  //
+  // The clip carries its own travel — its hips run +4.26 model units, which is most of the
+  // screen's width — so nothing here tweens x. What it does NOT do is gain height: as authored
+  // the pendulum ends 1.08u *lower* than it starts. So the rise is added underneath it, eased in
+  // so he accelerates away rather than drifting upward from the first frame.
+  //
+  // Falls back to the door run when there is no rig, because a placeholder build has no swing.
+  //
+  // `lift` is the rise ADDED to the clip, not the height he ends at. Three things stack, in
+  // document units, against the height his hips sat at while he was braced:
+  //
+  //     +68  the clip's hang, cancelled by ROPE_HANG so it contributes nothing
+  //     -93  the clip's own net descent over the arc (1.08u)
+  //     +120 this lift
+  //
+  // — about 28 units of true rise at the end of the swing, roughly a sixth of his height,
+  // against ~368 units of travel toward the door. He reads as swung out, not winched up.
+  escape(doorX, { duration = 1.7, lift = 120 } = {}) {
+    if (!this.rig) return this.runTo(doorX);
+
+    this.escaping = true;
+    gsap.killTweensOf(this.root);
+
+    // Skipping the clip's opening half-second: it is a static hang, and this beat has no budget
+    // for dead air. The 1.3x on top brings the remaining 2.17s in under the outro's budget.
+    this.rig.playOnce('rope', { fade: ROPE_BLEND, hold: true, startAt: ROPE_SKIP, timeScale: ROPE_RATE });
+
+    // The hang is cancelled over the clip's own cross-fade, not on one frame: the mixer is
+    // interpolating the body up to the hanging pose across those 150ms, so the root has to come
+    // down across the same 150ms. Snap it and he dips a full 68 units and climbs back out.
+    const base = this.footY + ROPE_HANG;
+    const tl = gsap.timeline();
+    tl.to(this.root, { y: base, duration: ROPE_BLEND, ease: 'none' }, 0)
+      .to(this.root, { y: base - lift, duration: duration - ROPE_BLEND, ease: 'power2.in' }, ROPE_BLEND)
+      .to(this, {
+        _opacity: 0, duration: ROPE_FADE, ease: 'power1.in',
+        onUpdate: () => this._applyOpacity(),
+      }, duration - ROPE_FADE);
+    return tl;
+  }
+
+  _applyOpacity() {
+    this.root.alpha = this._opacity;
+    this.rig?.setOpacity(this._opacity);
+  }
+
+  // The old door run. Still the escape for a build with no rig — see escape() above.
   // Sets `escaping` first so the per-frame pressure offset stops fighting the tween.
   runTo(x, { duration = 1.1 } = {}) {
     this.escaping = true;
@@ -155,14 +220,18 @@ export class Hero {
   place() {
     this._onLanded = null;
     this.escaping = false;
-    gsap.killTweensOf(this.root);
+    // Both targets: the escape tweens the root's y and the hero's own _opacity, and a retry can
+    // land mid-swing. Killing only the root would leave the fade running over the new round.
+    gsap.killTweensOf([this.root, this]);
     // A retry after the escape would otherwise start with the body still held on the last frame
     // of the outro.
     this.rig?.resumeLoop();
     this.t = TOTAL;
     this.root.x = this.x;
-    this.root.alpha = 1;
     this.root.scale.set(1);
+    // A retry after the escape starts from a hero who has swung away and faded out.
+    this._opacity = 1;
+    this._applyOpacity();
     this._apply();
   }
 
