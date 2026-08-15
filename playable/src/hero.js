@@ -186,6 +186,22 @@ export class Hero {
     return tl;
   }
 
+  // Take him off the screen for an end card.
+  //
+  // He needs his own exit because he is not in the Pixi scene the dim covers: the rig draws on
+  // #three-canvas, which sits ABOVE #pixi-holder, so the card and the 62% scrim both pass under
+  // him and he ends up standing over the FAIL title. Raising the Pixi canvas over the Three one
+  // instead would fix the card and break everything else — the whole painted chamber would come
+  // with it, including the pillar he is braced against, which would then draw over him.
+  //
+  // On the win this is already done: the swing faded him out on its way off screen.
+  fadeOut(duration = 0.3) {
+    return gsap.to(this, {
+      _opacity: 0, duration, ease: 'power1.in',
+      onUpdate: () => this._applyOpacity(),
+    });
+  }
+
   _applyOpacity() {
     this.root.alpha = this._opacity;
     this.rig?.setOpacity(this._opacity);

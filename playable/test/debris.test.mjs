@@ -471,5 +471,88 @@ console.log('--- a wall that gives ground must not be abandoned by the pile ---'
               `-> ${recovered.toFixed(0)} after waking the face)`);
 }
 
+// The win outro: the pillar comes down as rubble where it stood, which is OUTSIDE the shaft it
+// was the left wall of. Board2D.collapsePillar opens the bound before it spawns anything; this
+// is why it has to, and what the debris does once it has.
+//
+// Geometry mirrors the game's. The grate is x 100..700; left of it is the stone ledge the grid
+// is set into, which is solid floor. The pillar stands ON that ledge with its right face just
+// inside the first column — x 70..130 — so it is mostly outside the shaft it walls in, and the
+// shaft's left bound is its face at 130.
+const collapseSim = (wall, left) => new DebrisSim({
+  max: 300, drainY: 1400, packCell: 20,
+  solidAt: (x, y) => (y >= 500 && x < 100 ? true : wall.at(x, y)),
+  bounds: { left, right: 700 },
+});
+// The column at the instant it comes apart: pivoted on its base at (130, 500), turned 1.05 rad
+// into the shaft and still turning at 4.17 rad/s. Same frame and the same rigid-body velocities
+// collapsePillar lays out — the foot barely stirs, the head is flung down the shaft.
+const PIVOT = { x: 130, y: 500, angle: 1.05, rate: 4.17, length: 240, width: 60, pivot: 0.75 };
+const dropPillar = (sim) => {
+  const { x, y, angle, rate, length, width, pivot } = PIVOT;
+  const upX = Math.sin(angle), upY = -Math.cos(angle);
+  const acrossX = Math.cos(angle), acrossY = Math.sin(angle);
+  for (let r = 0; r < 12; r++) {
+    const u = (r + 0.5) * (length / 12);
+    for (let c = 0; c < 3; c++) {
+      const v = ((c + 0.5) / 3 - pivot) * width;
+      const px = x + upX * u + acrossX * v;
+      const py = y + upY * u + acrossY * v;
+      const rx = px - x, ry = py - y;
+      sim.spawn(px, py, { vx: rate * -ry, vy: rate * rx, tint: 0xffff4d, glow: 0xb87800 });
+    }
+  }
+};
+
+console.log('--- the pillar collapses into the shaft ---');
+{
+  // Left where it is: the pieces that landed outside the old wall are blocked on both axes.
+  const stuckSim = collapseSim(makeWall(), 130);
+  dropPillar(stuckSim);
+  const spawned = stuckSim.parts.filter((p) => p.alive).map((p) => ({ x: p.x, y: p.y }));
+  const outside = spawned.filter((p) => p.x < 130).length;
+  run(stuckSim, 3);
+  const stranded = stuckSim.parts
+    .filter((p, i) => p.alive && spawned[i].x < 130 && Math.abs(p.y - spawned[i].y) < 1).length;
+  ok('a piece left outside the shaft wall hangs in mid-air (why the bound must open first)',
+     outside > 0 && stranded === outside, `${stranded} of ${outside} stranded`);
+
+  const wall = makeWall();
+  // What collapsePillar does: open out to reach the leftmost piece, and no further.
+  const sim = collapseSim(wall, Math.min(...spawned.map((p) => p.x)) - 20);
+  dropPillar(sim);
+  run(sim, 4);
+  const live = sim.parts.filter((p) => p.alive);
+  ok('all 36 pieces are still in play', live.length === 36, `live=${live.length}`);
+  ok('every piece came to rest', live.every((p) => p.asleep),
+     `${live.filter((p) => !p.asleep).length} still moving`);
+  ok('it jams on an intact board rather than draining', sim.drained === 0, `drained=${sim.drained}`);
+  ok('and it lands on the wall, not inside it',
+     live.every((p) => p.y < 520), `lowest=${Math.max(...live.map((p) => p.y)).toFixed(0)}`);
+  ok('the pieces carry the pillar\'s colour', live.every((p) => p.tint === 0xffff4d && p.glow),
+     `${live.filter((p) => !p.tint).length} untinted`);
+
+  // The head of a toppling column is flung; its foot barely stirs. That spread is the whole
+  // difference between a column that fell over and one that dissolved where it stood, and it
+  // comes out of the rigid-body velocity rather than being dialled in.
+  const spread = Math.max(...live.map((p) => p.x)) - Math.min(...live.map((p) => p.x));
+  ok('it lies across the board rather than heaping at its own foot', spread > PIVOT.length,
+     `spread=${spread.toFixed(0)} over a ${PIVOT.length}-long column`);
+  console.log(`     (${live.length} pieces strewn over ${spread.toFixed(0)} units of grate)`);
+}
+
+console.log('--- ...and pours through the columns the player opened ---');
+{
+  const wall = makeWall();
+  for (let r = 0; r < 8; r++) { wall.solid.delete(r + ',0'); wall.solid.delete(r + ',1'); }
+  const sim = collapseSim(wall, 100);
+  dropPillar(sim);
+  run(sim, 6);
+  ok('some of the pillar drained through the cleared columns', sim.drained > 0,
+     `drained=${sim.drained}`);
+  ok('but the rest is stuck on what is left standing', sim.live > 0, `live=${sim.live}`);
+  console.log(`     (${sim.drained}/36 pieces went through, ${sim.live} jammed)`);
+}
+
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

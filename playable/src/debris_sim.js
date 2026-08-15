@@ -88,6 +88,10 @@ export class DebrisSim {
       alive: false, asleep: true,
       x: 0, y: 0, vx: 0, vy: 0,
       cell: null, stillT: 0, contactT: 0, load: 1,
+      // Both 0 unless a caller sets them, which means "use the palette" — the sim does not know
+      // what a colour is, it only carries the two numbers through to whatever draws the rock.
+      // The pillar's debris is the only thing that sets them; see Board2D.collapsePillar.
+      tint: 0, glow: 0,
       type: 0, frame: 0, frameT: 0,
       angle: 0, drawAngle: 0, angleT: 0, age: 0,
     }));
@@ -331,7 +335,7 @@ export class DebrisSim {
 
   // Returns null when the pool is full. Callers must cope with that rather than assume a
   // rock came back.
-  spawn(x, y, { vx = 0, vy = 0 } = {}) {
+  spawn(x, y, { vx = 0, vy = 0, tint = 0, glow = 0 } = {}) {
     // Find a DEAD slot. This used to take parts[_next] round-robin regardless of whether
     // that rock was still alive, so once the cursor wrapped — which a full game does, with
     // a pool of ~400 and ~500 rocks spawned over its length — it recycled rocks that were
@@ -354,6 +358,7 @@ export class DebrisSim {
     p.type = this._pickType();
     p.x = x; p.y = y;
     p.vx = vx; p.vy = vy;
+    p.tint = tint; p.glow = glow;
     p.stillT = 0;
     p.contactT = 0;
     p.frame = Math.floor(Math.random() * ROCK_FRAMES);

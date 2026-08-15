@@ -208,6 +208,21 @@ const RELIEF_SECONDS = 6;
 const DRAIN_BATCH = 10;
 const DRAIN_HOLD = 0.9;
 
+// The pillar's debris keeps the pillar's colour, so what comes apart across the board is legibly
+// the gold column the player spent the round bracing rather than more of the sandstone mass.
+//
+// MEASURED, both of them. The rock sheets average 0x917e6a and the pillar art averages 0xf8b820,
+// which is BRIGHTER in red and green than the source is. Pixi's tint is a multiply and can only
+// darken, so no tint reaches it — 0xffff4d is as far as a multiply goes, landing on an olive.
+// The additive pass of 0xb87800 makes up the rest, and the two together put the debris' mean on
+// the pillar's own. See the note on the two passes in debris_pixi.
+const PILLAR_TINT = 0xffff4d;
+const PILLAR_GLOW = 0xb87800;
+
+// Lattice spacing jitter, as a fraction of a pack cell. Enough that the courses do not read as a
+// stack of identical bricks, small enough that no two pieces start inside each other.
+const COLLAPSE_JITTER = 0.3;
+
 const T_SWAP = 0.16;
 const T_CLEAR = 0.16;
 // How long a plate takes to crumble once its gem is gone. The hole opens on the LAST frame of
@@ -253,6 +268,9 @@ export class Board2D {
     // round is lost on.
     this._push = 0;
     this._armed = false;
+    // Set once the pillar has collapsed: the round is decided and there is nothing left for the
+    // rubble to press on, so the threat stops accumulating. See collapsePillar.
+    this._threatOver = false;
     this._seededCount = 0;
     this._lastDrained = 0;
     this._drainHold = 0;
@@ -429,6 +447,72 @@ export class Board2D {
     if (x > b.left) this.sim.pushRightOf(x); // wall advancing: shove the mass, don't trap it
     else this.sim.wakeColumn(b.left, b.left + this.sim.packCell * 2); // retreating: let it slump
     b.left = x;
+  }
+
+  // Win beat: the falling pillar breaks up, mid-fall, into rubble.
+  //
+  // WHY THIS GOES THROUGH THE SIM AT ALL, rather than being a canned shatter: routed through the
+  // sim the debris obeys the board the player actually left behind. It jams on the plates still
+  // standing, piles on rock that never drained, and pours through the columns they cut open — so
+  // the last thing they see is the shape of their own game. A canned collapse looks the same
+  // whether they cleared one column or five.
+  //
+  // The argument is the COLUMN'S FRAME at the instant it comes apart, not a box: where its base
+  // is, how far over it has turned, how fast it is turning, and how long and wide it is. Scene
+  // owns all of that, because Scene is what tipped it over. See Scene.collapsePillar.
+  collapsePillar({ x, y, angle, rate, length, width, pivot }) {
+    // Nothing can press on a pillar that is not there. Without this the debris it becomes is
+    // read as fresh load the moment it lands against the wall: pressure spikes, push climbs,
+    // and the stamina ring refills over an outro in which he is already safe.
+    this._threatOver = true;
+
+    // The column's own axes at that angle, in document units. `up` runs base to head — at rest
+    // that is straight up the screen, hence the -cos — and `across` is the width, to its right.
+    const upX = Math.sin(angle), upY = -Math.cos(angle);
+    const acrossX = Math.cos(angle), acrossY = Math.sin(angle);
+
+    const s = this.sim.packCell;
+    const rows = Math.max(1, Math.round(length / s));   // courses, base to head
+    const cols = Math.max(1, Math.round(width / s));    // pieces across a course
+    const jitter = s * COLLAPSE_JITTER;
+
+    const pieces = [];
+    let leftmost = Infinity;
+    for (let r = 0; r < rows; r++) {
+      const u = (r + 0.5) * (length / rows) + (Math.random() - 0.5) * jitter;
+      for (let c = 0; c < cols; c++) {
+        // Measured from the pivot, not from the corner: the pivot is where the sprite turned, so
+        // this is the same frame the fall was drawn in and the handover has nothing to line up.
+        const v = ((c + 0.5) / cols - pivot) * width + (Math.random() - 0.5) * jitter;
+        const px = x + upX * u + acrossX * v;
+        const py = y + upY * u + acrossY * v;
+        // The foot of a toppled column is under the floor. Dropping those pieces rather than
+        // clamping them is the honest fix: a piece started inside the grate or the ledge is
+        // blocked on every axis and just sits there, half sunk, for the rest of the outro.
+        if (this._solidAt(px, py)) continue;
+        pieces.push({ px, py });
+        if (px < leftmost) leftmost = px;
+      }
+    }
+    if (!pieces.length) return;
+
+    // The shaft has to open to reach the debris BEFORE any of it spawns, or the pieces outside
+    // the wall are out of bounds on their first step, blocked on both axes, and hang in mid-air.
+    // setLeftBound also wakes what was banked against the old wall, which has just lost it.
+    this.setLeftBound(Math.min(leftmost - s, this.sim.bounds.left));
+
+    for (const { px, py } of pieces) {
+      // Rigid-body velocity, not a hand-picked scatter: a point at r from the pivot of something
+      // turning at `rate` moves at rate * perpendicular(r). So the foot barely stirs and the head
+      // is flung down the shaft, which is the whole difference between a column that fell and a
+      // column that dissolved. It also means the debris cannot disagree with the fall it came out
+      // of — both are driven by the same number.
+      const rx = px - x, ry = py - y;
+      this.sim.spawn(px, py, {
+        vx: rate * -ry, vy: rate * rx,
+        tint: PILLAR_TINT, glow: PILLAR_GLOW,
+      });
+    }
   }
 
   // Where new rubble enters. Driven from the layout so it is always just off the top of the
@@ -1076,7 +1160,7 @@ export class Board2D {
 
     // And let that load work on him over time. Pressure is what the rubble weighs; push is how
     // far it has moved him, and it only moves while the mass is actually bearing down.
-    if (this._started) {
+    if (this._started && !this._threatOver) {
       if (this._pressure > CREEP_AT) {
         this._push = Math.min(1, this._push + (this._pressure * dt) / CREEP_SECONDS);
       } else {
@@ -1158,6 +1242,7 @@ export class Board2D {
     this._pressure = 0;
     this._push = 0;
     this._armed = false;
+    this._threatOver = false;
     this._seededCount = 0;
     this._lastDrained = 0;
     this._drainHold = 0;

@@ -517,6 +517,10 @@ export class Game {
     gsap.killTweensOf(this.cursor);
     this.board.reset();
     this.hero.place();
+    // Before setPush, which is a no-op while the pillar is down — a retry after a win would
+    // otherwise start the round with no pillar and the shaft wall still opened out to where its
+    // rubble was.
+    this.scene.restorePillar();
     this.scene.setPush(0);
     this._setDanger(false);
     this.audio.duckMusic(false);
@@ -670,12 +674,17 @@ export class Game {
 
     // The outro, in beats. Nothing is removed from the board — the path was cleared by
     // playing, so sweeping the remainder here would take credit for the player's work.
-    //   1. the mass is gone, so the pillar springs off him
-    //   2. he swings out on the rope and fades
-    //   3. end card
+    //   1. the pillar goes over the edge, and breaks up on the way down into rubble that falls
+    //      through the board he cleared and jams on what he left standing
+    //   2. on the shatter, he swings out on the rope
+    //   3. he fades, end card
+    //
+    // Strictly in that order, and it is the topple that allows it: the column goes over to the
+    // RIGHT, away from him and down the shaft, so there is no frame in which its debris is
+    // landing on the man who just escaped.
     this._setDanger(false);
     this.audio.play('win');
-    await this.scene.releasePillar();
+    await this._collapsePillar();
     const door = centerOf('door_original_exact');
     this.audio.play('door', { volume: 0.7 });   // the way opening, under the start of the swing
     // The door x is only the fallback target: with the rig present the rope clip carries its own
@@ -684,6 +693,23 @@ export class Game {
     this.audio.duckMusic(true);
     this.audio.play('winCheer');
     this._showEnd(this.winGroup);
+  }
+
+  // The pillar goes over. Scene owns the fall — it is the one thing in the chamber that is a
+  // rigid object rather than a mass — and the board owns the rubble it breaks into, because only
+  // the board knows what is left standing to jam it.
+  //
+  // Two sounds, because it is two events: the stone letting go as it tips, then the rockfall on
+  // the shatter. The latter is the drain cue — stone_2/3/4 are the hard-attack samples, which is
+  // exactly what this is — played up, because a column coming apart is the largest thing in the
+  // round. The shake goes with the break, not the tip.
+  _collapsePillar() {
+    this.audio.play('plate', { volume: 0.5 });
+    return this.scene.collapsePillar((frame) => {
+      this.audio.play('drain', { volume: 0.6 });
+      this._shake = 0.9;
+      this.board.collapsePillar(frame);
+    });
   }
 
   _fail() {
@@ -707,6 +733,10 @@ export class Game {
     this.overlay.visible = true;
     this.overlay.alpha = 0;
     gsap.to(this.overlay, { alpha: 1, duration: 0.3 });
+    // The hero goes with the scene, on the same beat. He is the one thing the dim cannot cover
+    // on its own — see Hero.fadeOut for why that is a property of the canvas he lives on rather
+    // than of the display list.
+    this.hero.fadeOut(0.3);
 
     // The gameplay CTA goes away with the board. Both end cards carry their own call to action
     // — OPEN and TRY AGAIN — and leaving the download button sitting under the dim gives the
