@@ -127,7 +127,7 @@ const CONFETTI_SPAN_Y = 520;
 // The ceiling on its size is the board, and it is tight. The badge's vertical band (doc y
 // 552..654) runs straight down the side of the grid, whose first column starts at x=546, and he
 // does not hold still: he is driven left by the pillar (58 units) while the rig stands him
-// progressively CLOSER to it as he tires (hero3d's PHASE_OFFSET, -8 to +36). Those two nearly
+// progressively CLOSER to it as he tires (hero3d's STANDOFF, -8 to +36). Those two nearly
 // cancel, but not quite, and the phase standoff eases over 0.3s while push moves at a hundredth
 // of that — so the worst frame is push 0.60 with the offset still at 36, and he stands at
 // x=492.2. Simulated off the real constants, not guessed.
@@ -1540,27 +1540,32 @@ export class Game {
 
     // The outro, in beats. Nothing is removed from the board — the path was cleared by
     // playing, so sweeping the remainder here would take credit for the player's work.
-    //   1. the pillar goes over the edge, and breaks up on the way down into rubble that falls
-    //      through the board he cleared and jams on what he left standing
-    //   2. AT THE SAME TIME, a rope drops in from above the top edge and swings across to him
-    //   3. he takes it at the top of its arc and rides it back out
+    //   1. a rope drops in from above the top edge and swings across to him
+    //   2. he takes it at the top of its arc — and only THEN does the pillar go over, breaking
+    //      up on the way down into rubble that falls through the board he cleared
+    //   3. he rides the rope back out while the chamber comes apart behind him
     //   4. he fades, end card
     //
-    // 1 and 2 run TOGETHER, and that is a fix rather than a convenience. Sequentially they cost
-    // ~1.7s in which the column had already gone, the rope had not been thrown yet, and he was
-    // braced against thin air in between: the column comes apart 0.60s after it is pushed, and
-    // the rope needs 1.25s from launch to reach his hands. Launched together, it is on its way
-    // down while the column is going over and the wait drops to ~0.65s of held pose, over a
-    // debris shower rather than over an empty chamber. It also takes 0.7s off the whole outro.
+    // THE COLUMN STANDS UNTIL HE IS OFF IT, and that ordering is the whole point. It used to go
+    // over on the outro's first frame, in parallel with the rope. Filmed, that reads badly: the
+    // column is a diagonal shard by 0.4s and gone by 0.6s, and the rope does not reach his hands
+    // until 1.25s — so for three quarters of a second, on the best shot in the ad, he holds a
+    // full brace pose against blank wall with his hands closed on nothing.
     //
-    // They are not offset any FURTHER than that, and the limit is geometric rather than taste:
-    // the rope comes in from over the door and does not enter the column's x until the last
-    // ~0.3s of its arc, by which time the column is long since broken and faded (0.72s). Give
-    // the rope a head start and it swings through a column that is still standing.
+    // Starting it at the grab instead makes the beat causal — he takes the rope, lets go, and
+    // the column he was holding up goes with the chamber — and it costs no time at all: the fall
+    // is 0.72s end to end against the 1.67s of swing it now runs under, so the escape is still
+    // the longer of the two and the card lands on the same frame it did before.
     //
-    // The topple is still what allows any of it: the column goes over to the RIGHT, away from
-    // him and down the shaft, so there is no frame in which its debris lands on the man who just
-    // escaped — and none in which he swings into it either, since he leaves after it has fallen.
+    // The old note here warned that a rope given a head start would swing through a column still
+    // standing. It does cross it, in the last ~0.3s of the arc — and that was never the problem
+    // it sounds like: the rope is a Pixi mesh added straight to `world`, so it draws in FRONT of
+    // the column. A rope hanging in front of a pillar is a rope hanging in front of a pillar.
+    //
+    // The topple still goes to the RIGHT, over the shaft and away from where he was standing, so
+    // its debris never lands on him. He is travelling right too, but a good half second ahead of
+    // it and rising — and he is on #three-canvas above every Pixi layer, so the column falls
+    // behind him rather than through him.
     this._setDanger(false);
     // The threat is over the moment the pillar goes; the frame must not still be beating over a
     // man on a rope. Off here rather than with the end card, exactly like the stamina gauge.
@@ -1575,10 +1580,17 @@ export class Game {
     // box(), not centerOf(): the door is painted into the backdrop and ships no sprite of its
     // own any more, and centerOf() insists on shipped art. Only the PSD's placement is wanted.
     const door = box('door_original_exact');
-    // Both started before either is awaited — that, and nothing else, is what overlaps them.
-    const collapse = this._collapsePillar();
-    const escape = this._ropeEscape(door ? door.x + door.width / 2 : 887);
-    await Promise.all([collapse, escape]);
+    // Handed in rather than started here, because the beat it belongs to is inside the escape —
+    // the frame his hands leave the stone. `collapse` is filled in by that callback.
+    let collapse = null;
+    const escape = this._ropeEscape(
+      door ? door.x + door.width / 2 : 887,
+      () => { collapse = this._collapsePillar(); },
+    );
+    await escape;
+    // Already finished in the game as it stands — the fall ends ~0.6s before the escape hands
+    // back — so this is a backstop for the day either duration is retuned, not a wait.
+    await collapse;
     this.audio.duckMusic(true);
     this.audio.play('winCheer');
     this._showEnd(this.winGroup);
@@ -1594,11 +1606,15 @@ export class Game {
   //
   // Both are awaited. The rope timeline is the longer of the two by ~30ms, but that is a tuning
   // coincidence and not something the end card should depend on.
-  async _ropeEscape(targetX) {
+  // `onLetGo` fires on the frame his hands come off the stone, which is the frame the column
+  // loses what was holding it. Both paths below call it exactly once — a placeholder build has
+  // no grab, so there it is the first stride of the run.
+  async _ropeEscape(targetX, onLetGo) {
     if (!this.rope?.mesh || !this.hero.rig) {
       // No rope and no rig, so there is no grab to hit — he simply runs, and the cheer goes on
       // the start of the run, which is the moment the escape becomes his in this version.
       this.audio.play('ropeGrab', { volume: 0.8 });
+      onLetGo?.();
       return this._awaitAllBut(this.hero.escape(targetX), WIN_CARD_LEAD);
     }
     this.audio.play('swap', { volume: 0.45 });   // the whoosh, as it pays out over the edge
@@ -1615,6 +1631,9 @@ export class Game {
         // rides its callback rather than being timed against it from out here.
         this.audio.play('ropeGrab', { volume: 0.8 });
         swing = this.hero.escape(targetX);
+        // Last, so the column goes over a frame after his hands have left it rather than on the
+        // same one. Its own 0.10s of anticipation carries the rest of that read.
+        onLetGo?.();
       },
     });
     await this._awaitAllBut(swing, WIN_CARD_LEAD);

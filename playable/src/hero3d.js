@@ -64,22 +64,54 @@ const PHASE_DOWN = [0.28, 0.60];
 
 const PHASE_FADE = 0.3;
 
-// How far he stands from the pillar in each phase, in document units, positive being toward it
-// (screen-right). He is not planted on one spot as he tires: fresh, he holds it at arm's length;
-// once he is giving out he has been driven onto it. Moving ONTO the pillar rides the cross-fade's
-// own linear ramp, over exactly PHASE_FADE, so the stance is at the same fraction as the pose on
-// every frame and not merely at its ends. Moving AWAY from it is instant — see _updateState for
-// why the two directions differ.
+// How far he stands from the pillar, in document units, positive being toward it (screen-right).
+// He is not planted on one spot as he tires: fresh, he holds it at arm's length; once he is
+// giving out he has been driven onto it.
 //
-// Written as three plain distances rather than multiples of a base unit, because they are tuned
-// by eye per phase and no ratio between them survived that. For scale: he is ~200 units tall and
-// the pillar travels 58 in total.
+// KEYED ON THE CLIP, NOT ON THE PHASE. That distinction is the whole of a bug this used to have,
+// and it is worth spelling out because the phase-indexed version looks obviously correct.
 //
-// Phase 2 has the most room of the three despite being nearest: the tired poses draw his hands
-// in toward his chest, so what would touch the pillar first is idle_0's outstretched arms — and
-// that one stands off at -8. Judge the ceiling against whichever pose reaches furthest, not
-// against whichever number is largest.
-const PHASE_OFFSET = [-8, 14, 36];
+// The three phases pick an IDLE — but the idles are not the only thing that can be playing. He
+// switches to `push` whenever he is winning ground, and "winning ground" is precisely when the
+// phase is stepping back DOWN. So on every recovery the old table walked the standoff 36 -> 21
+// -> -8 underneath a pose that never changed: 44 units of body slide with the animation held
+// still, which cannot read as anything but a bug. It is also why the two directions looked so
+// different. Going UP he is tiring, `push` is not playing, the standoff moved with a real
+// cross-fade, and it was smooth. Going down there was no cross-fade for it to move with.
+//
+// `push` earns its own entry rather than borrowing a phase's because it reaches nearly as far as
+// idle_0 — the phase it is played under says 21.0 and the truth is 59.0, so his hands went 38
+// units into the stone for the whole of every recovery.
+//
+// TUNE THESE AGAINST THE CONTACT POINT, NOT AGAINST THE MAN. What the player reads is where his
+// hands meet the stone. The number that has to hold still is the SUM, standoff + reach, where
+// reach is the front-most hand bone ahead of the rig's own origin — measured off the posed
+// skeleton, not guessed, and near enough constant within a clip (the idles do not move the hands
+// at all; `push` swings 4.9):
+//
+//     clip      standoff   reach     contact
+//     idle_0        -8      69.4       61.4
+//     idle_1        21      36.0       57.0
+//     idle_2        36      21.0       57.0
+//     push           0      59.0       59.0
+//
+// Anything in the high fifties reads as bracing; idle_1 shipped at 50.0 for a while and was the
+// one pose that visibly floated, because idle_1 curls both arms in toward his chest and the old
+// standoff did not make that up. Checked against renders of all four at the same scale.
+//
+// The marks sit ~18 units past the column's painted left edge (which is itself 6 units inside the
+// layer box — the sprite carries transparent padding). That overlap is not an error to be tuned
+// out: the front-most BONE is a fingertip joint, and the flesh and palm behind it are what the
+// eye reads as contact. Putting the joint itself on the face renders as a man reaching for a wall
+// he cannot quite touch. Tried, filmed, worse.
+//
+// For scale: he is ~200 units tall and the pillar travels 58 in total.
+const STANDOFF = {
+  idle_0: -8,
+  idle_1: 21,
+  idle_2: 36,
+  push: 0,
+};
 
 // He plays `push` while he is winning ground — i.e. while fatigue is falling, which only
 // happens when the player has cleared plates and the shaft is draining. Debounced at both ends
@@ -252,9 +284,13 @@ class Hero3D {
     this._oneShot = null;   // set while land/rope owns the body
     this._placeX = 0;       // last spot the caller asked for, before the phase standoff
     this._placeY = 0;
-    this._offset = PHASE_OFFSET[0];
     // The standoff ramp, parked at its end so he starts planted rather than sliding into place.
-    this._offsetFrom = PHASE_OFFSET[0];
+    // _fadeTo below rewrites all four from STANDOFF; these only have to be self-consistent for
+    // the frame in between, and `_offset` has to exist before _fadeTo reads it for _offsetFrom.
+    this._offset = STANDOFF[IDLES[0]];
+    this._offsetFrom = this._offset;
+    this._offsetTo = this._offset;
+    this._offsetDur = PHASE_FADE;
     this._offsetT = PHASE_FADE;
     this._overlays = [];    // flat chamber pieces lifted up here to draw in front of him
 
@@ -474,6 +510,22 @@ class Hero3D {
     if (fade > 0) next.fadeIn(fade);
 
     this._current = name;
+
+    // THE STANDOFF TRAVELS WITH THE CROSS-FADE, and it is started HERE, by the thing that starts
+    // the cross-fade, because they have to be one event. It used to be started by the phase
+    // machine instead, on the frame the phase index changed — which is a DIFFERENT event, and on
+    // a recovery it fires two or three times while no clip change happens at all.
+    //
+    // Linear, over exactly the seconds the mixer was given: fadeIn/fadeOut are linear
+    // interpolants over that same span, so pose and stance are at the same fraction on every
+    // frame between, not merely at the ends.
+    //
+    // From wherever he ACTUALLY is, so a change that interrupts a move continues from his
+    // current position rather than jumping back to the mark he was leaving.
+    this._offsetFrom = this._offset;
+    this._offsetTo = STANDOFF[name] ?? this._offset;
+    this._offsetDur = fade;
+    this._offsetT = 0;
   }
 
   _updateState(dt) {
@@ -495,55 +547,35 @@ class Hero3D {
     if (!this._gaining && this._fallFor >= GAIN_ENTER) this._gaining = true;
     else if (this._gaining && this._flatFor >= GAIN_LEAVE) this._gaining = false;
 
+    // The phase now decides only WHICH IDLE and what colour the HUD ring is. It no longer touches
+    // the standoff: that follows the clip, and the clip is chosen on the next line. Stepping the
+    // phase while `push` holds the body is a real and frequent case — it is most of a recovery —
+    // and on those frames there is nothing for the stance to do.
     let p = this._phase;
     while (p < PHASE_UP.length && f >= PHASE_UP[p]) p++;
     while (p > 0 && f < PHASE_DOWN[p - 1]) p--;
-    if (p !== this._phase) {
-      const target = PHASE_OFFSET[p];
-      // THE TWO DIRECTIONS ARE NOT THE SAME PROBLEM, so they do not get the same treatment.
-      //
-      // Stepping DOWN — recovering, idle_2 to idle_1 — he must move AWAY from the pillar, and
-      // the pose he is fading into reaches further than the one he is leaving: the tired poses
-      // draw his hands into his chest, the fresher ones put them out. Ramp that and for the whole
-      // of PHASE_FADE he is standing at the tired distance with lengthening arms, which puts his
-      // hands through the stone. It is also the most watched moment in the round, because it is
-      // the one the player earned. So it SNAPS: the body is clear before the arms arrive.
-      //
-      // Stepping UP he is being driven onto the pillar, his hands are drawing in, and nothing can
-      // penetrate anything. That one still rides the cross-fade, which is what sells being pushed.
-      //
-      // The cost of the snap is the mirror of what it fixes — for a few frames his hands are
-      // short of the pillar rather than inside it — and that is the right way round: a man
-      // bracing slightly off the stone reads as a man bracing. A hand inside it reads as a bug.
-      if (target < this._offset) {
-        this._offsetFrom = target;
-        this._offsetT = PHASE_FADE;   // i.e. already arrived
-      } else {
-        // From wherever he actually is, so a change that interrupts a move continues from the
-        // current position rather than jumping back to the old phase's mark.
-        this._offsetFrom = this._offset;
-        this._offsetT = 0;
-      }
-    }
     this._phase = p;
 
     if (!this._oneShot) this._fadeTo(this._gaining ? 'push' : IDLES[p]);
 
-    // THE STANDOFF RIDES THE CROSS-FADE'S OWN CURVE. Linear, over exactly PHASE_FADE, because
-    // that is what the mixer does to the pose weights — fadeIn/fadeOut are linear interpolants
-    // over the same PHASE_FADE. Matching them means the two are at the SAME fraction on every
-    // frame in between, not merely at the ends, and that is the whole point.
+    // Both directions are the same problem now, so they get the same treatment. The old version
+    // ramped toward the pillar and SNAPPED away from it, on the argument that the pose he fades
+    // into on the way down reaches further than the one he is leaving, so ramping would drag his
+    // hands through the stone. That was true of a standoff keyed on the phase — but only because
+    // such a standoff was already moving at the wrong times. Keyed on the clip, whatever he fades
+    // into brings its own reach with it and the sum stays inside four units, so there is nothing
+    // left to snap away from.
     //
-    // This used to be an exponential smooth, `_offset += (target - _offset) * dt / PHASE_FADE`,
-    // which is a different curve entirely: it is only 64% of the way after PHASE_FADE and needs
-    // about 0.9s to arrive — three times as long as the pose it was supposed to travel with. The
-    // symptom was on the way DOWN a phase. The pose became idle_0, whose arms are the furthest
-    // outstretched of the three, while the body was still standing at phase 1's closer mark, so
-    // his hands went into the pillar and then drew back out as the offset crept away behind them.
-    // Judge any change here against idle_0's reach, as PHASE_OFFSET's own note says.
-    this._offsetT = Math.min(PHASE_FADE, this._offsetT + dt);
-    const k = PHASE_FADE > 0 ? this._offsetT / PHASE_FADE : 1;
-    this._offset = this._offsetFrom + (PHASE_OFFSET[p] - this._offsetFrom) * k;
+    // What the ramp cannot follow is the arm's own path across a cross-fade: the mixer blends
+    // rotations, so the hand traces an arc rather than a straight line, and traced frame by frame
+    // it dips ~5 units short before it extends and overshoots ~2 past at the end. Against a linear
+    // stance that is a contact wobble of about +/-15 units for a quarter of a second on the big
+    // idle_2 <-> push change, and less on every other. It is left alone deliberately: it is the
+    // ARM that moves, which is what arms do. Driving the stance off the hand every frame removes
+    // it, and puts the same wobble into the BODY, which is forty times the size.
+    this._offsetT = Math.min(this._offsetDur, this._offsetT + dt);
+    const k = this._offsetDur > 0 ? this._offsetT / this._offsetDur : 1;
+    this._offset = this._offsetFrom + (this._offsetTo - this._offsetFrom) * k;
     this._applyPlacement();
   }
 
