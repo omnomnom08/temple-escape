@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Temple Escape — Playable Ad</title>
+    <style>
+      html, body {
+        margin: 0; padding: 0; height: 100%; width: 100%;
+        background: #0b0a12; overflow: hidden;
+        font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+        -webkit-tap-highlight-color: transparent; touch-action: none;
+      }
+      /* The renderer fills the viewport; the world is scaled and positioned inside it by
+         layout.js. The art is authored square so the backdrop covers both orientations,
+         so there is no fixed design box to letterbox here. */
+      #viewport, #stage { position: fixed; inset: 0; }
+      #stage canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; }
+      /* Layer reserved for the rigged glTF character (Three.js), which draws in front of
+         the wall. Empty until the rig lands — see ai_logs/02-build-log.md. */
+      #pixi-holder { position: absolute; inset: 0; z-index: 0; }
+      #three-canvas { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
+    </style>
+  </head>
+  <body>
+    <div id="viewport">
+      <div id="stage">
+        <div id="pixi-holder"></div>
+        <canvas id="three-canvas"></canvas>
+      </div>
+    </div>
+    <script type="module" src="/src/main.js"></script>
+  </body>
+</html>

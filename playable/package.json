@@ -1,0 +1,25 @@
+{
+  "name": "temple-escape-playable",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Temple Escape — a \"Save the Character\" match-3 playable ad. Vite + Pixi.js (+ Three.js for the character rig).",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "art": "node tools/optimize-art.mjs",
+    "test": "node test/match3.test.mjs && node test/debris.test.mjs"
+  },
+  "dependencies": {
+    "@smoud/playable-sdk": "^1.1.1",
+    "gsap": "^3.12.5",
+    "pixi.js": "^8.6.0",
+    "three": "^0.180.0"
+  },
+  "devDependencies": {
+    "sharp": "^0.35.3",
+    "vite": "^5.4.10",
+    "vite-plugin-singlefile": "^2.0.3"
+  }
+}
