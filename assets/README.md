@@ -8,7 +8,6 @@ assets/
 ├── art/          runtime art the playable imports (see playable/src/art.js)
 │   └── vfx/      particle and glow sprites
 ├── audio/        23 original SFX, mp3
-├── fonts/        Baloo2 (SIL Open Font License 1.1)
 └── source/       authoring files — NOT shipped in the build
     ├── blender/  world.blend + its glTF export, and the export script
     └── textures/ full-resolution temple textures and their PSD
@@ -38,11 +37,15 @@ imported by `art.js`, so the sheet and the simulation cannot drift apart.
 open. When it is, these get inlined into the single-file build, so the set needs trimming to
 a budget first; 509 KB of source is more than the creative should carry.
 
-## fonts/
+## fonts — none
 
-Baloo2 in three weights, ~2 MB of TTF. The game currently renders with `system-ui, Arial`.
-Before shipping, the used weights need subsetting to Latin + digits and converting to WOFF2
-— the full TTFs would roughly double the bundle for a handful of glyphs.
+There is no `fonts/` folder, and the build loads no typeface. Every word on screen is baked
+art out of the layout PSD (`MERGE_TO_SAVE_HIM`, `HURRY_UP`, `DOWNLOAD`, `OPEN`, `WIN`, `FAIL`,
+`TRY_AGAIN`), and the codebase constructs no `PIXI.Text` at all. Three weights of Baloo2 used
+to sit here against a text pass that never happened; ~2 MB of TTF for zero glyphs rendered.
+
+If live text is ever needed, subset the weight to Latin + digits and convert to WOFF2 before
+importing it — the full TTFs would be a sixth of the bundle for a handful of characters.
 
 ## source/
 

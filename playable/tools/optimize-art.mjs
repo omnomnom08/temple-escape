@@ -18,7 +18,24 @@ const VFX = path.join(ART, 'vfx');
 // vfx/ is a scratch folder of effect art, most of which is not shipped (the 4x4 smoke grid
 // alone is 326 KB), so it is listed rather than walked — the same rule layers.js applies to
 // the PSD extract: the bundle is a function of what is used, not what exists.
-const VFX_SHIP = ['sparkle2.png'];
+const VFX_SHIP = ['sparkle2.png', 'rope.png', 'vfx_smoke.png'];
+
+// layers/ gets the same treatment, and for the same reason. The extract holds every layer of
+// the document; only these have a matching import in src/layers.js, and walking the folder
+// instead wrote a .webp next to each of the others — orphan derivatives that nothing loads and
+// that come straight back the moment this is run. Keep this list in step with layers.js: an
+// import added there without a name here silently keeps serving a stale .webp.
+//
+// ui_btn_sound_on/off are deliberately absent. They ship as .png — at 50x50 they encode BIGGER
+// as WebP (1542 vs 1429, 1104 vs 1010), so transcoding them is a loss, not a saving.
+const LAYERS_SHIP = [
+  'bg', 'top_walls', 'top_walls_ceilling', 'spikes', 'spikes_body_back', 'spikes_body_top',
+  'spikes_mask', 'pillar', 'hero_placeholder', 'plate_single', 'gem_blue_teardrop',
+  'gem_green_square', 'gem_red_heart', 'plate_particle_0', 'plate_particle_1', 'plate_particle_2',
+  'progressbar', 'arm_icon', 'ui_screen_shadow', 'error', 'text_back', 'MERGE_TO_SAVE_HIM',
+  'HURRY_UP', 'btn', 'btn_1', 'DOWNLOAD', 'cursor', 'chest_closed', 'ui_endcard_ray',
+  'ui_endcard_ray_glow_2', 'ui_endcard_ray_glow_copy_3', 'OPEN', 'WIN', 'FAIL', 'TRY_AGAIN',
+].map((n) => `${n}.png`);
 
 // name -> max width in document units it is ever drawn at. Everything is emitted at 2x that
 // for retina, capped at the source size — upscaling would only add bytes.
@@ -34,6 +51,17 @@ const MAX_W = {
 
 const QUALITY = 82;
 
+// Per-file alpha quality, where the default 90 is the wrong trade. WebP encodes alpha as its own
+// plane, and 90 is near-lossless: fine for cut-out art, ruinous for a layer that IS its alpha.
+//
+// `error` is the panic vignette — one flat colour (233,0,1) over a smooth full-frame alpha ramp,
+// so the alpha plane is the entire file. At 90 it is 276 KB; at 70 it is 39 KB, and the ramp
+// deviates from the source by 3.8/255 on average, 9 at worst, with 0.5% of pixels more than 8
+// off. On a gradient drawn at partial opacity that is invisible, and 237 KB is a seventh of the
+// bundle's whole art budget. The cliff is between 70 and 80 — 80 is already 209 KB.
+const ALPHA_Q = { error: 70 };
+const ALPHA_Q_DEFAULT = 90;
+
 async function convert(file, outDir, maxDocW) {
   const src = path.join(outDir, file);
   const name = file.replace(/\.png$/i, '');
@@ -46,7 +74,7 @@ async function convert(file, outDir, maxDocW) {
   const out = path.join(outDir, `${name}.webp`);
   await img
     .resize(target === meta.width ? undefined : { width: target })
-    .webp({ quality: QUALITY, effort: 6, alphaQuality: 90 })
+    .webp({ quality: QUALITY, effort: 6, alphaQuality: ALPHA_Q[name] ?? ALPHA_Q_DEFAULT })
     .toFile(out);
 
   const after = fs.statSync(out).size;
@@ -58,10 +86,11 @@ async function run() {
   for (const f of fs.readdirSync(ART)) {
     if (f.toLowerCase().endsWith('.png')) jobs.push([f, ART, MAX_W[f.replace(/\.png$/i, '')]]);
   }
-  if (fs.existsSync(LAYERS)) {
-    for (const f of fs.readdirSync(LAYERS)) {
-      if (f.toLowerCase().endsWith('.png')) jobs.push([f, LAYERS, undefined]);
-    }
+  for (const f of LAYERS_SHIP) {
+    // No MAX_W lookup: layer art is already exported at document scale, and the walk this
+    // replaced passed no cap either — reading one here would quietly re-encode bg at a new size.
+    if (fs.existsSync(path.join(LAYERS, f))) jobs.push([f, LAYERS, undefined]);
+    else console.warn(`  missing layers/${f} — listed in LAYERS_SHIP`);
   }
   for (const f of VFX_SHIP) {
     if (fs.existsSync(path.join(VFX, f))) jobs.push([f, VFX, MAX_W[f.replace(/\.png$/i, '')]]);

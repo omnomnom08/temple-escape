@@ -32,7 +32,7 @@ ad networks take.
 
 ```
 playable/       the Vite app
-assets/         art, audio, fonts, and Blender/PSD authoring sources
+assets/         art, audio, and Blender/PSD authoring sources
 ai_logs/        how this was built with AI — start at ai_logs/README.md
 README.md       this file
 ```
@@ -209,8 +209,8 @@ arrived. It buys nothing until `hero.glb` lands, and removing it is one import.
    moment where the player is genuinely behind.
 5. **Squeeze the bundle.** The single file is 2.52 MB raw, and network ceilings in this format
    run from 2 MB to 5 MB depending on the network — so this needs trimming before it can go
-   everywhere. The three levers, largest first: the 564 KB of audio (see above), Three.js at
-   ~151 KB gzip for a rig that has not arrived, and the font subset (Latin + digits, WOFF2).
+   everywhere. The two levers, largest first: the 564 KB of audio (see above), and Three.js at
+   ~151 KB gzip.
 6. **Wire the tutorial mask.** The hint logic already finds a valid pair, and the instruction
    banner and hand already clear themselves on the first swap; dimming everything except that
    pair until the swap happens is a small change with a large effect on the first five seconds,
@@ -231,6 +231,7 @@ pipeline diagram and who did what at each handoff.
 
 ## Assets and licensing
 
-All assets are original or open-licensed. Fonts are Baloo2 (SIL Open Font License 1.1).
+All assets are original or open-licensed. No typeface ships — every word on screen is baked
+art from the layout PSD, and the build loads no font file.
 Reference creatives were analysed, as the brief invites; no asset or code from any commercial
 title is present in this project.

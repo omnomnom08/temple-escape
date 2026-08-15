@@ -15,6 +15,12 @@ playable/dist/
 *.psd
 *.psb
 
+# Pre-transcode backups of the two layers whose WebP settings were tuned by hand (bg and the
+# error vignette). Local safety copies, not sources: the .png beside each one is the source,
+# and `npm run art` reproduces the shipped .webp from it. Half a megabyte of redundant binary
+# that would churn on every re-encode.
+assets/art/layers/_src/
+
 # OS cruft
 .DS_Store
 Thumbs.db
