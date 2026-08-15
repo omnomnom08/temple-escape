@@ -98,9 +98,20 @@ const BANK = {
 // stopping sources instead would click, and would re-attack the loop's first frame every time.
 const LOOPS = {
   music: { clip: 'bg_1', volume: 0.28 },
-  rumble: { clip: 'stone_0', volume: 0 },   // driven by setFlow
+  rumble: { clip: 'stone_0', volume: 0, bus: 'debris' },   // driven by setFlow
   danger: { clip: 'timer', volume: 0 },     // driven by setDanger
 };
+
+// Everything that is ROCK, gathered onto one gain so the end cards can pull the whole category
+// down in one move — see duckDebris. A bus rather than a volume argument at each call site,
+// because the loudest rubble of the whole round is thrown by the pillar collapsing INTO the win,
+// and setFlow re-writes the rumble's own gain on its own schedule for as long as that lasts.
+// Anything that clamped setFlow would be overwritten by the next report from the sim; a stage
+// further down the graph cannot be.
+//
+// `plate` is deliberately NOT here. It is stone, but _fail fires it as the crush — the sound of
+// the spikes closing on him — and that one is the point of the beat rather than background to it.
+const DEBRIS_BUS = new Set(['drain']);
 
 // The rumble bed's levels. It is a bed under the whole round, not an effect, so it has to sit
 // well below the one-shots: the rocks are meant to be felt continuously and noticed only when
@@ -110,6 +121,18 @@ const RUMBLE_MAX = 0.20;
 const RUMBLE_FLOOR = 0.03;
 const RUMBLE_FULL = 160;
 const RUMBLE_TAIL = 1.3;   // seconds to silence, if no further flow is reported
+
+// Where the rubble sits once an end card is up, and how long it takes to get there. Ducked, not
+// cut: the pillar's rubble is still coming down behind the win card and the shaft is still
+// settling behind the fail card, so silencing it outright would leave the picture moving with
+// nothing under it. A quarter is about 12 dB — far enough under the sting and the cheer to stop
+// competing with them, close enough to still read as rock.
+//
+// The fade is slower than the card's own 0.3s scrim on purpose. The card arriving is not an edit;
+// the rubble should be heard receding under it rather than being switched off as it appears.
+const DEBRIS_DUCK = 0.25;
+const DEBRIS_DUCK_T = 0.8;
+const DEBRIS_UNDUCK_T = 0.3;   // a retry is a hard cut back to the round; no reason to linger
 
 // How long a gap in matching drops the merge ladder back to its bottom rung. Longer than a
 // cascade takes to play out (~0.5s a step) so a chain never resets in the middle of itself,
@@ -145,6 +168,12 @@ export class Audio {
     this.master = this.ctx.createGain();
     this.master.gain.value = 0.85;
     this.master.connect(this.ctx.destination);
+
+    // One stage between the rock and the master, so duckDebris has something to hold that the
+    // per-sound gains cannot argue with. See DEBRIS_BUS.
+    this.debrisBus = this.ctx.createGain();
+    this.debrisBus.gain.value = 1;
+    this.debrisBus.connect(this.master);
 
     const wanted = [...new Set([
       ...Object.values(BANK).flat(),
@@ -184,20 +213,31 @@ export class Audio {
       src.loop = true;
       const gain = this.ctx.createGain();
       gain.gain.value = def.volume;
-      src.connect(gain).connect(this.master);
+      src.connect(gain).connect(this._out(def.bus));
       src.start();
       this.loops.set(key, { src, gain, target: def.volume });
     }
   }
 
-  // Ramp rather than set: a step change in gain on a running loop is an audible click.
+  // Which node a sound hands off to. Only two exist; anything unlabelled goes straight to master.
+  _out(bus) {
+    return bus === 'debris' && this.debrisBus ? this.debrisBus : this.master;
+  }
+
+  // Ramp rather than set: a step change in gain is an audible click. Always FROM the value the
+  // parameter holds right now, not from wherever the last ramp was heading, or a duck landing
+  // mid-fade jumps before it slides.
+  _ramp(param, value, seconds) {
+    const now = this.ctx.currentTime;
+    param.cancelScheduledValues(now);
+    param.setValueAtTime(param.value, now);
+    param.linearRampToValueAtTime(value, now + seconds);
+  }
+
   _rampLoop(key, volume, seconds = 0.35) {
     const loop = this.loops.get(key);
     if (!loop) return;
-    const now = this.ctx.currentTime;
-    loop.gain.gain.cancelScheduledValues(now);
-    loop.gain.gain.setValueAtTime(loop.gain.gain.value, now);
-    loop.gain.gain.linearRampToValueAtTime(volume, now + seconds);
+    this._ramp(loop.gain.gain, volume, seconds);
     loop.target = volume;
   }
 
@@ -222,7 +262,7 @@ export class Audio {
     src.playbackRate.value = rate;
     const g = this.ctx.createGain();
     g.gain.value = volume;
-    src.connect(g).connect(this.master);
+    src.connect(g).connect(this._out(DEBRIS_BUS.has(key) ? 'debris' : null));
     src.start();
   }
 
@@ -291,5 +331,16 @@ export class Audio {
   // The end cards are loud; drop the bed under them rather than stacking everything.
   duckMusic(on) {
     this._rampLoop('music', on ? 0.08 : LOOPS.music.volume, 0.5);
+  }
+
+  // Same idea, for the rock. Called when an end card goes up, released on retry.
+  //
+  // Both cards land on top of rubble that is still moving — the pillar is mid-collapse behind the
+  // win and the shaft is still settling behind the fail — and the sim goes on feeding setFlow
+  // throughout. Holding it here rather than at the sources is what makes that survivable: see
+  // the note on DEBRIS_BUS.
+  duckDebris(on) {
+    if (!this.debrisBus) return;
+    this._ramp(this.debrisBus.gain, on ? DEBRIS_DUCK : 1, on ? DEBRIS_DUCK_T : DEBRIS_UNDUCK_T);
   }
 }

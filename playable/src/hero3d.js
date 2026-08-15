@@ -1,5 +1,9 @@
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+// The rig is meshopt-compressed (EXT_meshopt_compression + KHR_mesh_quantization), so the
+// loader cannot read it without this. 25 KB of decoder against 555 KB off the GLB — see the
+// note on modelURL in art.js for how the file is produced.
+import { MeshoptDecoder } from 'three/addons/libs/meshopt_decoder.module.js';
 
 // The rigged explorer, rendered on #three-canvas above the Pixi board.
 //
@@ -104,7 +108,7 @@ export async function create({ modelUrl, textureUrl, canvas, DESIGN_W, DESIGN_H,
 
   let gltf;
   try {
-    gltf = await new GLTFLoader().loadAsync(modelUrl);
+    gltf = await new GLTFLoader().setMeshoptDecoder(MeshoptDecoder).loadAsync(modelUrl);
   } catch (e) {
     console.warn('[hero3d] rig failed to load — keeping the 2D placeholder', e);
     renderer.dispose();
@@ -168,18 +172,39 @@ class Hero3D {
     this.group.add(model);
     this.model = model;
 
-    if (texture) {
-      model.traverse((o) => {
-        const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-        for (const m of mats) {
+    // Settled ONCE here, because in Three every one of these is part of the shader's cache key,
+    // and a material that changes key mid-round pays for a fresh compile at that exact moment.
+    // The end card used to do exactly that: see the note on `transparent` below.
+    model.traverse((o) => {
+      const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
+      for (const m of mats) {
+        if (texture) {
           m.map = texture;
           // baseColorFactor is 0.8 grey in the export and multiplies the map, so leaving it
           // would ship every colour 20% dark.
           m.color?.setScalar(1);
-          m.needsUpdate = true;
         }
-      });
-    }
+        // TRANSPARENT FROM THE START, at full opacity — which looks identical and costs a blend
+        // nobody can see. The alternative is what this used to do: leave it opaque and let
+        // setOpacity flip the flag when the end card fades him out. That flip is a different
+        // shader (`#define OPAQUE` goes away), so the program was built during the escape.
+        //
+        // Worse, the export marks him doubleSided, and Three draws a TRANSPARENT double-sided
+        // mesh in two passes — back faces, then front — which is two more programs again, both
+        // born in the same frame. Measured at 109 ms and 185 ms of blocked main thread: one
+        // 297 ms frame, eighteen dropped, landing on the beat the whole ad is selling.
+        //
+        // Pre-compiling them did not help. Restoring the flag afterwards drops each program's
+        // use count to zero and Three deletes it, so the warm-up threw away exactly what it paid
+        // for. Never changing the flag is the fix, and it is also less code.
+        m.transparent = true;
+        // And this retires the two-pass split for good: one draw of his 9.4k triangles instead
+        // of two. What it gives up is back-to-front sorting between his own faces, which only
+        // has anything to say during the half-second he is fading out.
+        m.forceSinglePass = true;
+        m.needsUpdate = true;
+      }
+    });
 
     // Scale by measured height so the rig matches the 2D placeholder's footprint whatever units
     // it was exported in, and sit its feet on y=0 within the group.
@@ -357,10 +382,9 @@ class Hero3D {
     }
     this.model.traverse((o) => {
       const mats = Array.isArray(o.material) ? o.material : o.material ? [o.material] : [];
-      for (const m of mats) {
-        m.transparent = a < 1;
-        m.opacity = a;
-      }
+      // Opacity only. `transparent` is set once when the model loads and is never touched again
+      // — it is part of the shader key, and moving it here is what used to stall the escape.
+      for (const m of mats) m.opacity = a;
     });
   }
 

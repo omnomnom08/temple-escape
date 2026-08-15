@@ -776,14 +776,23 @@ export class Game {
     // animation rather than snapping ahead of it.
     this._setTint(STAMINA_COLOR[phase], false, Math.min(1, dt / STAMINA_TINT_FADE));
 
-    // The ring unwinds. A pie wedge from twelve o'clock, clockwise — masking the shipped ring
-    // sprite rather than stroking an arc, so the lit part is the artwork itself.
+    // The ring unwinds CLOCKWISE — masking the shipped ring sprite rather than stroking an arc,
+    // so the lit part is the artwork itself.
+    //
+    // Twelve o'clock is the fixed END of the wedge, not its start, and that is the whole trick.
+    // Sweeping the other way round draws a wedge that is itself clockwise from twelve, but the
+    // only edge that MOVES is the far one, and as the gauge drains that edge retreats 12 -> 9 ->
+    // 6 -> 3: anticlockwise, which is what the eye actually follows. Anchoring the end instead
+    // leaves the moving edge running 12 -> 3 -> 6 -> 9, the way a clock does.
+    //
+    // At left = 1 the two angles are exactly 2*PI apart, which is the case canvas draws as a full
+    // circle rather than as nothing — same as it was before, just mirrored.
     const m = this.staminaRingMask;
     m.clear();
     if (left > 0) {
       const r = this._ringR;
       m.moveTo(0, 0)
-        .arc(0, 0, r, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * left)
+        .arc(0, 0, r, -Math.PI / 2 - Math.PI * 2 * left, -Math.PI / 2)
         .lineTo(0, 0)
         .fill(0xffffff);
     }
@@ -1071,6 +1080,7 @@ export class Game {
     this.scene.setPush(0);
     this._setDanger(false);
     this.audio.duckMusic(false);
+    this.audio.duckDebris(false);
     this.winGroup.visible = false;
     this.failGroup.visible = false;
     this.chest.reset();
@@ -1668,6 +1678,12 @@ export class Game {
 
   _showEnd(group, fade = END_FADE) {
     const won = group === this.winGroup;
+    // Here rather than in _win/_fail, and for both cards, because this is the beat the player is
+    // being asked to read something: the sting, the cheer and the card's own arrival all land on
+    // it, and rubble at round volume is the one thing on the mix loud enough to bury them. The
+    // collapse keeps its full weight during the outro that leads up to this — it is a beat of its
+    // own — and only steps back once there is a card to step back for.
+    this.audio.duckDebris(true);
     this.winGroup.visible = won;
     this.failGroup.visible = group === this.failGroup;
     // On the win the whole screen is the call to action; on the fail it is nothing at all, so

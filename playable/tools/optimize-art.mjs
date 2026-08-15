@@ -59,7 +59,18 @@ const QUALITY = 82;
 // deviates from the source by 3.8/255 on average, 9 at worst, with 0.5% of pixels more than 8
 // off. On a gradient drawn at partial opacity that is invisible, and 237 KB is a seventh of the
 // bundle's whole art budget. The cliff is between 70 and 80 — 80 is already 209 KB.
-const ALPHA_Q = { error: 70 };
+//
+// The endcard's three ray layers are the same shape of file for the same reason: a starburst and
+// two broad glows, all of them soft ramps that ARE their alpha, and all three drawn blended (two
+// of them additively) rather than as cut-outs. Together they were 172 KB, the largest block of
+// art in the bundle after the backdrop; at 70 they are 77 KB, with the alpha off by 2/255 on
+// average and 9 at worst — inside the tolerance already accepted for `error` above.
+const ALPHA_Q = {
+  error: 70,
+  ui_endcard_ray: 70,
+  ui_endcard_ray_glow_2: 70,
+  ui_endcard_ray_glow_copy_3: 70,
+};
 const ALPHA_Q_DEFAULT = 90;
 
 async function convert(file, outDir, maxDocW) {
