@@ -5,8 +5,8 @@ onto a grate above him, piling up against the pillar and driving it — and him 
 spikes that comes out of the wall to meet him. The grate is a match-3 board. Clear cells, open
 holes, and the rubble drains away before it crushes him.
 
-Drain it completely and the pillar topples, a rope swings in from above the screen, and he goes out
-on it.
+Drain it completely and a rope swings in from above the screen. He takes it at the top of its arc,
+and only then does the pillar go over — breaking apart behind him as he rides out.
 
 Portrait, mobile-first, one self-contained HTML file. Pixi.js for the game, Three.js for the
 character rig, Vite for the build.
@@ -61,7 +61,7 @@ README.md       this file
 | character in danger | a rigged explorer braced against the pillar, visibly tiring in three stages as it drives him back |
 | clear obstacle / threat | rubble piling up and pushing, plus spikes emerging from the wall on the same 0..1 pressure |
 | simple interaction | swipe to swap — one gesture, taught by a hand and a hinted pair, then never mentioned again |
-| success and failure | drained = pillar topples, rope swings in, he goes out on it; pillar reaches the spikes = fail |
+| success and failure | drained = a rope swings in, he takes it, and the pillar goes over behind him as he rides out; pillar reaches the spikes = fail |
 | retry flow | retry on both outcomes; instant restart, no replayed intro |
 | strong visual feedback | every match physically drains the threat — the rubble level falls, the pillar gives ground, the stamina badge refills, and his pose recovers a stage |
 
@@ -166,6 +166,30 @@ three degrees of exhaustion*. No clip library has an entry for "the same man, mo
 authorship is also what set the runtime architecture: the phases are far enough apart (>100° at the
 upper arm) that a weight blend between them is not a pose, so the rig runs as a three-state machine
 rather than the continuous blend it was originally written for.
+
+**His stance is tuned against the contact point, not against the body.** He stands at a different
+distance from the pillar in each pose — fresh, he holds it at arm's length; spent, he has been
+driven onto it — and the number that has to stay still is not where his *feet* are, it is where his
+*hands meet the stone*. So the standoff is tuned as a sum: stance offset plus reach, where reach is
+the front-most hand bone measured off the posed skeleton rather than guessed.
+
+|  | standoff | reach | contact |
+| --- | --- | --- | --- |
+| `idle_0` | −8 | 69.4 | 61.4 |
+| `idle_1` | 21 | 36.0 | 57.0 |
+| `idle_2` | 36 | 21.0 | 57.0 |
+| `push` | 0 | 59.0 | 59.0 |
+
+Hold the contact column steady and he reads as bracing; let it drift and he floats. `idle_1` shipped
+at 50.0 for a while and was the one pose that visibly did, because it curls both arms toward his
+chest and the stance did not make that up.
+
+Two things fell out of doing it this way. The marks sit ~18 units *past* the column's painted edge,
+and that overlap is correct rather than an error to tune out — the front-most bone is a fingertip
+joint, and the flesh behind it is what the eye reads as contact. Putting the joint itself on the
+face renders as a man reaching for a wall he cannot quite touch; it was tried, filmed, and worse.
+And the table is keyed on the **clip**, not on the stamina phase — `push` plays throughout every
+recovery, and keying on phase slid his body 44 units underneath a pose that never changed.
 
 **The rig was optimised at the source, not in code.** The first GLB was 1.25 MB, and **79 of its 107
 skeleton joints carried zero vertex weight** — the IK/FK control rig, animated in full by all six
@@ -377,9 +401,21 @@ toppling into the shaft as debris; the rope outro; win and fail cards with confe
 and a live CTA; a mute toggle; retry. Portrait and landscape both reflow. 83 tests passing.
 **3.07 MB raw / 1.52 MB gzip** as one self-contained HTML file.
 
-**Known flake:** the debris suite is not deterministic. `debris_sim.js` calls `Math.random()` in
-eleven places and takes no injectable `rng`, unlike `match3.js`. Seen once as two failures in ~21
-runs, and not reproduced since. Not fixed; the fix is to mirror what `Match3` already does.
+**Known flake, now pinned down.** The debris suite is not deterministic: `debris_sim.js` calls
+`Math.random()` in eleven places and takes no injectable `rng`, unlike `match3.js`. Measured at
+**2 failing runs in 25 (~8%)**, and it is always the same pair:
+
+```
+FAIL  three times the rubble pushes MORE than three times as hard   8.4 -> 21.6
+FAIL  force per rock rises with depth                             0.084 -> 0.072
+```
+
+Those are one measurement seen twice — with 3× the rocks the total force came in under 3×, so the
+per-rock figure fell instead of rising. Both assert a *statistical* property of a random pile
+against a single sample, so on an unlucky seed the pile arches and the load bridges instead of
+transmitting. The assertions are correct about the physics; the test is wrong to check them once.
+Not fixed, and the fix is two-part: inject an `rng` the way `Match3` already accepts one, and assert
+the trend across a handful of seeds rather than one.
 
 **Outstanding:** `walkthrough.mp4`, a balance pass against real play, and a bundle pass that is
 underway as this is written.
@@ -407,26 +443,23 @@ from, so it can be captured as reference footage alongside the walkthrough.
    at the moment the spikes get close, or the instant he is free — is the cheapest, most direct
    emotional hook a rescue ad has, and it is the thing a face unlocks that a body cannot do.
 
-3. **Finish the standoff.** His distance from the pillar still reads as floating when the stamina
-   phase changes. Two real causes were found and fixed — an eased offset that took three times as
-   long to arrive as the pose it was travelling with, and the recovering direction needing to snap
-   rather than ramp so his hands clear the stone — and it is better, but not right. The next thing
-   to try is a per-clip offset rather than a per-phase one: `push` currently borrows phase 0's, and
-   it plays whenever he is winning ground, which is exactly when the seam shows.
-4. **An audio budget.** All 21 clips are wired and the interesting pieces are done — the rubble
+3. **An audio budget.** All 21 clips are wired and the interesting pieces are done — the rubble
    rumble is a held loop whose gain follows *flow*, how much mass is moving, rather than a one-shot
    per impact that either machine-guns or needs throttling; and the six merge recordings are a
    ladder that climbs one rung per match and drops back after a couple of seconds without one, so
    keeping the combo going is audible. What is left is size: the audio is the largest single block
    in the bundle now. Mono at 64 kbps and trimming the four-second stone tails to their first second
    would roughly halve it.
-5. **Determinism in the debris tests.** An intermittent red makes a real regression easy to dismiss
-   as the flake, which defeats the reason the suite exists.
-6. **A tutorial mask.** The hint logic already finds a valid pair, the hand and banner already clear
+4. **Determinism in the debris tests.** Two known assertions fail about 8% of the time, for the
+   reason above — they sample a random pile once and assert a statistical property of it. Inject an
+   `rng` the way `Match3` already accepts one, and assert the trend across several seeds. An
+   intermittent red makes a real regression easy to dismiss as the flake, which defeats the reason
+   the suite exists.
+5. **A tutorial mask.** The hint logic already finds a valid pair, the hand and banner already clear
    themselves on the first swap, and the hinted gems already pulse and sparkle. Dimming everything
    *except* that pair until the swap happens is a small change to the part of an ad that matters
    most.
-7. **Let the fall run longer.** The drop is half a second, and it should breathe. Falling is the
+6. **Let the fall run longer.** The drop is half a second, and it should breathe. Falling is the
    hook (see below), and half a second is barely enough to register it before the round starts —
    a longer descent past passing stonework would earn the landing and let the danger land before
    the puzzle asks for anything.
@@ -440,7 +473,7 @@ from, so it can be captured as reference footage alongside the walkthrough.
    animation, and at that point it is the same conversation as the first act below. Worth doing
    together, not separately.
 
-8. **The first act.** This is the largest gap between what the creative was designed to be and what
+7. **The first act.** This is the largest gap between what the creative was designed to be and what
    it delivers, and it is not an idea — it is **built, blocked out, and cut**. The explorer enters an
    upper temple room; a chest sits at the far end lit by god rays; he crosses toward it, nearly
    reaches it, steps on a hidden stone, and the floor gives way beneath him. **The playable in this

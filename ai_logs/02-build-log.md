@@ -745,10 +745,22 @@ stamina badge, the panic frame, the sound toggle, the CTA destination and the as
 
 **Known flake:** the debris suite is not deterministic. `debris_sim.js` calls `Math.random()` in
 eleven places and its constructor takes no `rng`, unlike `Match3`, which accepts an injectable
-one — so those tests run against fresh random input every time. Observed once as two failures,
-not reproduced in 20 further runs, and the two failures were not captured. Still true, and still
-worth fixing for the same reason the tests exist: an intermittent red makes a real regression
-easy to dismiss as the flake.
+one — so those tests run against fresh random input every time.
+
+*Since captured.* It was observed once here and not reproduced in 20 further runs, which left it
+undiagnosed. Re-run 25 times later in the project it failed twice, always the same pair:
+
+```
+FAIL  three times the rubble pushes MORE than three times as hard   8.4 -> 21.6
+FAIL  force per rock rises with depth                             0.084 -> 0.072
+```
+
+One measurement seen from two angles — 3× the rocks produced less than 3× the force, so per-rock
+load fell instead of rising. On an unlucky seed the pile arches and bridges the load rather than
+transmitting it down. The assertions are right about the physics and wrong to sample it once; the
+fix is an injectable `rng` plus asserting the trend across several seeds. Still worth doing for the
+reason the tests exist at all: an intermittent red makes a real regression easy to wave off as the
+flake.
 
 **Placeholder, at the time of writing:** the character was the PSD's painted explorer rather than
 the rigged glTF, which had not been delivered. `hero3d.js` was written fail-soft so the rig's

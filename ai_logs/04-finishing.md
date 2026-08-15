@@ -137,9 +137,11 @@ the clip table in `PLAN.md` survived the swap unchanged.
 > the character should immediately mothe the offst of the idle_1 when it comes from idle_2. this is
 > the most visible moment
 
-**What this produced.** Two fixes, and one thing still open.
+**What this produced.** Two fixes, and one thing left open — which was closed later; see the
+postscript at the end of this file for the actual root cause, which neither of these was.
 
-Each phase stands at its own distance from the pillar (`PHASE_OFFSET = [-8, 14, 36]`), and that
+Each phase stands at its own distance from the pillar (then `PHASE_OFFSET = [-8, 14, 36]`, now the
+clip-keyed `STANDOFF`), and that
 standoff was being eased with an exponential smooth — `_offset += (target - _offset) * dt /
 PHASE_FADE`. That curve is only 64% of the way after `PHASE_FADE` and needs about 0.9s to arrive,
 roughly **three times as long as the pose it was supposed to travel with**. So on the way *down* a
@@ -490,11 +492,54 @@ on what.
 
 - **`walkthrough.mp4`** — the last deliverable. It records the finished playable, so it is last by
   definition.
-- **The rig's standoff still reads as floating.** Two real fixes landed (above) and the verdict was
-  *"it's still looks bad( let's wrap up the things and then comback to it."* Deferred deliberately,
-  not forgotten. The next thing to try is per-clip offsets rather than per-phase: the standoff is
-  currently one number for each of the three idles, and `push` — which plays whenever he is winning
-  ground — borrows phase 0's.
 - **Bundle optimisation**, in progress in a parallel session as this is written: the rig re-exported
   smaller again, and the endcard ray layers re-encoded at the lower alpha quality that `error`
   already used.
+
+*(The standoff was open when this file was written and has since been closed — see the postscript.)*
+
+---
+
+## Postscript: the standoff, closed
+
+The item above was deferred with *"it's still looks bad( let's wrap up the things and then comback
+to it."* It was come back to, and the root cause was neither of the two things already fixed.
+
+**The offset table was keyed on the stamina phase. It should have been keyed on the clip.** Those
+look like the same thing and are not: the phase picks an *idle*, but the idles are not the only
+thing that can be playing. He switches to `push` whenever he is winning ground — and winning ground
+is precisely when the phase steps back down. So on every recovery the table walked the standoff
+36 → 21 → −8 underneath a pose that never changed. Forty-four units of body slide with the
+animation held still, which cannot read as anything but a bug.
+
+That also explains why the two directions had looked so different, and why the earlier asymmetric
+snap seemed to help. Going *up* he is tiring, `push` is not playing, and the standoff moved with a
+real cross-fade — smooth. Going down there was no cross-fade for it to move with, because no clip
+was changing.
+
+`push` needed its own entry rather than borrowing a phase's, because it reaches nearly as far as
+`idle_0`: the phase it played under said 21.0 and the truth is 59.0, so his hands were 38 units
+inside the stone for the whole of every recovery.
+
+**And the right quantity to tune turned out not to be the stance at all.** What the player reads is
+where his hands meet the stone, so the number that has to hold still is the *sum* — standoff plus
+reach, with reach measured off the posed skeleton rather than guessed:
+
+| clip | standoff | reach | contact |
+| --- | --- | --- | --- |
+| `idle_0` | −8 | 69.4 | 61.4 |
+| `idle_1` | 21 | 36.0 | 57.0 |
+| `idle_2` | 36 | 21.0 | 57.0 |
+| `push` | 0 | 59.0 | 59.0 |
+
+Anything in the high fifties reads as bracing. `idle_1` had shipped at 50.0, and it was the one pose
+that visibly floated — it curls both arms toward the chest and the stance never made that up.
+
+One counter-intuitive result worth keeping: the marks sit about **18 units past** the column's
+painted edge. That overlap is correct. The front-most bone is a fingertip joint, and the flesh and
+palm behind it are what the eye reads as contact — putting the joint itself on the face renders as a
+man reaching for a wall he cannot quite touch. Tried, filmed, worse.
+
+Finally, the ramp moved to where it belongs: it is started by `_fadeTo`, the thing that starts the
+cross-fade, so the two are one event. It had been started by the phase machine, which is a
+*different* event that fires two or three times during a recovery while no clip changes at all.

@@ -13,9 +13,9 @@ constant. Anything genuinely still open is in **What is actually left**, immedia
 | | |
 | --- | --- |
 | **Done** | Everything numbered here: win card; fail outcome (1); Three-canvas viewport (2); the rig (3a–3g); rope outro (4); spikes (5); reveal (6); dust (7) |
-| **Open** | `walkthrough.mp4`; the rig's standoff on a phase change; a balance pass; the bundle |
+| **Open** | `walkthrough.mp4`; a balance pass; the bundle |
 
-Build is **3,070.56 kB / 1,517.33 kB gzip** at the time of writing, and moving — a bundle pass is
+Build is **3,070.72 kB / 1,517.43 kB gzip** at the time of writing, and moving — a bundle pass is
 underway in a parallel session. The root `README.md` is where the current figure lives; do not add
 a second copy of it here.
 
@@ -29,16 +29,10 @@ a second copy of it here.
      by that project's `main.js`, and its `world.glb` may be stale, because `world.blend` was
      re-saved after the last export. Re-export before recording or the footage will not match the
      .blend that ships here. See `ai_logs/00-origins.md`.
-2. **The rig's standoff still reads as floating on a phase change.** Two real causes were found and
-   fixed — an eased offset that took ~3× as long to arrive as the pose it travelled with, and the
-   recovering direction needing to snap rather than ramp so his hands clear the stone (`hero3d.js`,
-   `PHASE_OFFSET` and the note above `_offsetT`). Better, not right. Deferred deliberately. **Next
-   thing to try:** a per-clip offset rather than a per-phase one — `push` currently borrows phase
-   0's, and it plays whenever he is winning ground, which is exactly when the seam shows.
-3. **A balance pass against real play.** Inflow rate, capacity and start fill are sensible values,
+2. **A balance pass against real play.** Inflow rate, capacity and start fill are sensible values,
    not tuned ones.
-4. **The bundle.** In progress elsewhere; audio is the largest remaining block.
-5. **Determinism in the debris tests** — `debris_sim.js` takes no injectable `rng`, unlike
+3. **The bundle.** Audio is the largest remaining block.
+4. **Determinism in the debris tests** — `debris_sim.js` takes no injectable `rng`, unlike
    `match3.js`.
 
 **Win card — closed.** Went well past the original P3 scope: `WIN` title wired, `OPEN` exported and
