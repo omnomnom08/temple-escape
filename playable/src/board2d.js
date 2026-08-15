@@ -27,8 +27,9 @@ import { ShineEmitter } from './shine.js';
 // drained", not "board cleared". More distinct shapes is simply slower to read at cell size,
 // and an ad is judged on comprehension in the first two seconds.
 //
-// The dropped one is the yellow diamond (gem_orange_diamond.webp, still in assets/): against
-// the sandstone backdrop and the yellow pillar it was the least separable of the four.
+// The dropped one is the yellow diamond: against the sandstone backdrop and the yellow pillar it
+// was the least separable of the four. Its layer has since been removed from assets/ along with
+// everything else nothing imports; it is in git history if the fourth colour is ever wanted.
 const COLORS = [0x4fc3f7, 0x5ec46a, 0xff5b6b];
 
 // Chip tints, derived from COLORS so the two can never drift apart.

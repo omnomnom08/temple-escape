@@ -15,9 +15,9 @@ const ART = path.resolve(import.meta.dirname, '../../assets/art');
 const LAYERS = path.join(ART, 'layers');
 const VFX = path.join(ART, 'vfx');
 
-// vfx/ is a scratch folder of effect art, most of which is not shipped (the 4x4 smoke grid
-// alone is 326 KB), so it is listed rather than walked — the same rule layers.js applies to
-// the PSD extract: the bundle is a function of what is used, not what exists.
+// vfx/ was a scratch folder of effect art, most of it never shipped, so it is listed rather than
+// walked — the same rule layers.js applies to the PSD extract: the bundle is a function of what is
+// used, not what exists. The unused art has since been deleted; the list is what kept it honest.
 const VFX_SHIP = ['sparkle2.png', 'rope.png', 'vfx_smoke.png'];
 
 // layers/ gets the same treatment, and for the same reason. The extract holds every layer of

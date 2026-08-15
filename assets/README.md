@@ -40,9 +40,11 @@ texture serves two boxes, as the CTA does with the win card's button. `url(name)
 no placement, for anything positioned by code rather than by the document. `layer(name)` insists on
 both and returns null if either is missing.
 
-The extract holds every layer of the document; 35 of them ship. `manifest.json` still carries a few
-entries whose art was deleted — harmless, since a lookup on one simply returns null, and the box is
-occasionally still wanted after the pixels are gone.
+The extract originally held every layer of the document. **It now holds only the 35 that ship** —
+anything nothing imported has been deleted, and `manifest.json` still carries those entries. That is
+harmless and occasionally useful: a lookup on a missing layer returns null, and `box()` can still
+report where something *was* after its pixels are gone. Deleted layers are recoverable from git
+history if a design decision is ever revisited.
 
 **PNG is the source of truth; WebP is the shipped form.** `npm run art` transcodes one to the other:
 

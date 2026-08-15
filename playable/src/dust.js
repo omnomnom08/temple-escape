@@ -1,7 +1,7 @@
 // Dust kicked up under his feet when he lands.
 //
-// One soft 128px puff drawn a dozen times, not a sprite sheet. The animated 4x4 smoke grid in
-// vfx/ is 333 KB and would be ~440 KB inlined, for an effect that is on screen for half a second
+// One soft 128px puff drawn a dozen times, not a sprite sheet. The animated 4x4 smoke grid this
+// replaced was 333 KB and would have been ~440 KB inlined, for an effect on screen for half a second
 // at the very start — the same trade chest.js made when it dropped its sheet for a tween. What a
 // billow actually needs is to spread, swell and thin out, and all three of those are transforms.
 //

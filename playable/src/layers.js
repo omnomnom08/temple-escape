@@ -31,13 +31,13 @@ import sparkleUrl from '../../assets/art/vfx/sparkle2.webp?url';
 // The win outro's rope. Tiled along a MeshRope whose length is derived from the viewport, so
 // the strip ships once at 32x256 and serves any aspect ratio — see rope.js.
 import ropeUrl from '../../assets/art/vfx/rope.webp?url';
-// The landing dust. ONE soft puff, not the vfx_smoke_3-grid4x4.png sitting beside it in the
-// folder — that sheet is 333 KB, ~440 KB once inlined, for half a second of effect at the very
-// start of the round. See dust.js for what stands in for its frames.
+// The landing dust. ONE soft puff, not the animated 4x4 smoke grid that used to sit beside it —
+// that sheet was 333 KB, ~440 KB once inlined, for half a second of effect at the very start of
+// the round. See dust.js for what stands in for its frames.
 import smokeUrl from '../../assets/art/vfx/vfx_smoke.webp?url';
 
-// Confetti scraps. Stay .png for the same reason vfx_star did — at 42x49 and ~750 bytes each
-// they come out BIGGER as WebP (see the note in tools/optimize-art.mjs). 2.3 KB for all three.
+// Confetti scraps. These stay .png: at 42x49 and ~750 bytes each they come out BIGGER as WebP
+// (see the note in tools/optimize-art.mjs). 2.3 KB for all three.
 import conf0Url from '../../assets/art/vfx/part_eff_0.png?url';
 import conf1Url from '../../assets/art/vfx/part_eff_1.png?url';
 import conf2Url from '../../assets/art/vfx/part_eff_2.png?url';
@@ -64,8 +64,8 @@ import plateUrl from '../../assets/art/layers/plate_single.webp?url';
 import gemBlueUrl from '../../assets/art/layers/gem_blue_teardrop.webp?url';
 import gemGreenUrl from '../../assets/art/layers/gem_green_square.webp?url';
 import gemRedUrl from '../../assets/art/layers/gem_red_heart.webp?url';
-// gem_orange_diamond.webp is deliberately NOT imported — the board plays on three colours, and
-// an eager import here would bundle the file whether or not anything ever draws it.
+// There is no fourth gem here on purpose — the board plays on three colours. See board2d.js for
+// which one was dropped and why.
 
 import particle0Url from '../../assets/art/layers/plate_particle_0.webp?url';
 import particle1Url from '../../assets/art/layers/plate_particle_1.webp?url';
