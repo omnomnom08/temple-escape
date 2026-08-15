@@ -14,11 +14,27 @@ import manifest from '../../assets/art/layers/manifest.json';
 // Placement comes from manifest.json - the same file the extractor wrote - so document
 // coordinates are never retyped here and cannot drift from the PSD.
 
-import bgUrl from '../../assets/art/bg.webp?url';
+// The backdrop, flattened in Photoshop rather than composited here: bg_wall, bg_fog, walls,
+// shadow (the door's), door_original_exact and step_stone, in that order. It is the whole of
+// the chamber that never moves, so nothing in it needs a sprite of its own — the door and its
+// sill used to be three separate draws in FRONT of the hero, which bought nothing: the rig
+// draws on its own canvas above all of Pixi and was never occluded by them anyway.
+//
+// Their manifest entries stay: game.js still asks box('door_original_exact') where to send him
+// at the end. Placement survives the art being gone — but note that layer()/centerOf() do NOT,
+// since both require a shipped URL as well as a manifest box.
+import bgUrl from '../../assets/art/layers/bg.webp?url';
 
 // Not a PSD layer, so it has no manifest entry and cannot go through layer() — effect art is
 // placed by the code that spawns it, not by the document.
 import sparkleUrl from '../../assets/art/vfx/sparkle2.webp?url';
+// The win outro's rope. Tiled along a MeshRope whose length is derived from the viewport, so
+// the strip ships once at 32x256 and serves any aspect ratio — see rope.js.
+import ropeUrl from '../../assets/art/vfx/rope.webp?url';
+// The landing dust. ONE soft puff, not the vfx_smoke_3-grid4x4.png sitting beside it in the
+// folder — that sheet is 333 KB, ~440 KB once inlined, for half a second of effect at the very
+// start of the round. See dust.js for what stands in for its frames.
+import smokeUrl from '../../assets/art/vfx/vfx_smoke.webp?url';
 
 // Confetti scraps. Stay .png for the same reason vfx_star did — at 42x49 and ~750 bytes each
 // they come out BIGGER as WebP (see the note in tools/optimize-art.mjs). 2.3 KB for all three.
@@ -26,13 +42,22 @@ import conf0Url from '../../assets/art/vfx/part_eff_0.png?url';
 import conf1Url from '../../assets/art/vfx/part_eff_1.png?url';
 import conf2Url from '../../assets/art/vfx/part_eff_2.png?url';
 
-import wallUrl from '../../assets/art/layers/wall.webp?url';
-import shadowUrl from '../../assets/art/layers/shadow.webp?url';
+// THE TRAP, in six pieces where the old extract had two flattened ones. `wall.png` had the
+// ceiling beam baked into the wall bars and `spikes.png` was the spike bank already masked
+// down to its tips — which is exactly why neither could move. The 51%-opacity `shadow` layer
+// that used to sit over the niche is gone from the document and no longer drawn.
+//
+// The four spike files are in the PSD smart object's own space, not the document's; scene.js
+// owns the transform that places them. See TRAP there.
+import topWallsUrl from '../../assets/art/layers/top_walls.webp?url';
+import ceilingUrl from '../../assets/art/layers/top_walls_ceilling.webp?url';
+import spikesBackUrl from '../../assets/art/layers/spikes_body_back.webp?url';
 import spikesUrl from '../../assets/art/layers/spikes.webp?url';
+import spikesPlateUrl from '../../assets/art/layers/spikes_body_top.webp?url';
+// Not drawn: this one is the wall's silhouette with the seven socket mouths punched out of it,
+// and it is used as an INVERSE alpha mask over the rods — see Scene._buildTrap.
+import spikesMaskUrl from '../../assets/art/layers/spikes_mask.webp?url';
 import pillarUrl from '../../assets/art/layers/pillar.webp?url';
-import doorUrl from '../../assets/art/layers/door_original_exact.webp?url';
-import doorShadowUrl from '../../assets/art/layers/shadow__2.webp?url';
-import stepStoneUrl from '../../assets/art/layers/step_stone.webp?url';
 import heroUrl from '../../assets/art/layers/hero_placeholder.webp?url';
 
 import plateUrl from '../../assets/art/layers/plate_single.webp?url';
@@ -48,6 +73,15 @@ import particle2Url from '../../assets/art/layers/plate_particle_2.webp?url';
 
 import progressbarUrl from '../../assets/art/layers/progressbar.webp?url';
 import armIconUrl from '../../assets/art/layers/arm_icon.webp?url';
+// The screen's top scrim, under the banner. Black at 32,32,32 with an alpha ramp 246 -> 0 over
+// its 359 px, so it is a plain normal-blend overlay, not a multiply.
+import screenShadowUrl from '../../assets/art/layers/ui_screen_shadow.webp?url';
+// The panic vignette — a red frame that closes in when he is on his last legs. One flat colour
+// (233,0,1) over a full-frame alpha ramp, transparent in the middle, so like the scrim above it
+// is a plain normal-blend overlay. Its 1280x1280 box is the whole document, but it is stretched
+// to the VIEWPORT rather than placed: it is a screen effect, not scenery. See optimize-art's
+// ALPHA_Q — this is the one file whose alpha plane is the entire cost of it.
+import errorUrl from '../../assets/art/layers/error.webp?url';
 import textBackUrl from '../../assets/art/layers/text_back.webp?url';
 import titleUrl from '../../assets/art/layers/MERGE_TO_SAVE_HIM.webp?url';
 import hurryUrl from '../../assets/art/layers/HURRY_UP.webp?url';
@@ -62,6 +96,15 @@ import hurryUrl from '../../assets/art/layers/HURRY_UP.webp?url';
 import btnUrl from '../../assets/art/layers/btn.webp?url';
 import ctaTextUrl from '../../assets/art/layers/DOWNLOAD.webp?url';
 import cursorUrl from '../../assets/art/layers/cursor.webp?url';
+
+// The mute toggle, one icon per state. STAY .png, for the reason the confetti scraps do: at 50x50
+// and ~1 KB each they come out BIGGER as WebP — 1542 vs 1429 and 1104 vs 1010 — because the
+// container overhead is a real fraction of a file this small. 2.4 KB for the pair.
+//
+// They are also absent from the PSD extract, so they have no manifest entry and cannot go through
+// layer(). Same as OPEN: url() for the pixels, and game.js owns the placement.
+import soundOnUrl from '../../assets/art/layers/ui_btn_sound_on.png?url';
+import soundOffUrl from '../../assets/art/layers/ui_btn_sound_off.png?url';
 
 // The chest is a still, lured by a tween rather than a sprite sheet. The sheet was 118 KB of
 // WebP — ~157 KB once inlined — against 26 KB here, and a scale-and-hop in code covers what it
@@ -84,13 +127,13 @@ import failBtnUrl from '../../assets/art/layers/btn_1.webp?url';
 import failTextUrl from '../../assets/art/layers/TRY_AGAIN.webp?url';
 
 const URLS = {
-  wall: wallUrl,
-  shadow: shadowUrl,
+  top_walls: topWallsUrl,
+  top_walls_ceilling: ceilingUrl,
+  spikes_body_back: spikesBackUrl,
   spikes: spikesUrl,
+  spikes_body_top: spikesPlateUrl,
+  spikes_mask: spikesMaskUrl,
   pillar: pillarUrl,
-  door_original_exact: doorUrl,
-  shadow__2: doorShadowUrl,
-  step_stone: stepStoneUrl,
   hero_placeholder: heroUrl,
   plate_single: plateUrl,
   gem_blue_teardrop: gemBlueUrl,
@@ -101,12 +144,16 @@ const URLS = {
   plate_particle_2: particle2Url,
   progressbar: progressbarUrl,
   arm_icon: armIconUrl,
+  ui_screen_shadow: screenShadowUrl,
+  error: errorUrl,
   text_back: textBackUrl,
   MERGE_TO_SAVE_HIM: titleUrl,
   HURRY_UP: hurryUrl,
   btn: btnUrl,
   DOWNLOAD: ctaTextUrl,
   cursor: cursorUrl,
+  ui_btn_sound_on: soundOnUrl,
+  ui_btn_sound_off: soundOffUrl,
   ui_endcard_ray: rayUrl,
   ui_endcard_ray_glow_2: glowAddUrl,
   ui_endcard_ray_glow_copy_3: glowWarmUrl,
@@ -120,6 +167,8 @@ const URLS = {
 
 export const BG_URL = bgUrl;
 export const VFX_SPARKLE_URL = sparkleUrl;
+export const VFX_ROPE_URL = ropeUrl;
+export const VFX_SMOKE_URL = smokeUrl;
 export const CONFETTI_URLS = [conf0Url, conf1Url, conf2Url];
 export const DOC = manifest.document; // { width: 1280, height: 1280 }
 

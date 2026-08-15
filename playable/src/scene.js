@@ -1,6 +1,6 @@
 import * as PIXI from 'pixi.js';
 import { gsap } from 'gsap';
-import { BG_URL, DOC, layer } from './layers.js';
+import { BG_URL, DOC, layer, url } from './layers.js';
 
 // The chamber: everything painted and mostly static, placed straight from the PSD's layer
 // manifest so nothing here is eyeballed.
@@ -54,16 +54,64 @@ const SHATTER_FADE = 0.12;
 // Sampled from the darkest brick in bg.png so the seam is hard to find.
 export const VOID_COLOR = 0x1a1430;
 
-// Split at the depths the PSD puts them at: the hero stands in front of the pillar, and the
-// door assembly draws over both. The board goes on top of everything, which is where the
-// plate layers sit in the source file.
-const BEHIND = ['wall', 'shadow', 'spikes'];
-const FRONT = ['shadow__2', 'door_original_exact', 'step_stone'];
+// THE TRAP — the wall the hero is trapped against, and the two things in it that move.
+//
+// Placement, in document units. The wall bars and the ceiling beam are document-space layers
+// and go where the PSD puts them. The four spike pieces are NOT: they are exported from the
+// PSD's smart object in its own 473x593 space, and the document places that object at (296,331)
+// scaled to 167x211 — x0.35307 across, x0.35582 down. Every box below is that transform already
+// applied, so nothing else in the codebase has to know the smart object exists.
+//
+// `walls` is the PSD layer clipped at the canvas top: it runs to y -73 in the file, and the
+// document never shows above y 0.
+const TRAP = {
+  walls:   { x: 366,   y: 0,     w: 193,   h: 347 },     // document space, 1:1
+  ceiling: { x: 393,   y: 228,   w: 119,   h: 108 },     // document space, 1:1
+  recess:  { x: 371.2, y: 339.2, w: 29.0,  h: 197.8 },   // object space (213,23) 82x556
+  rods:    { x: 310.8, y: 334.2, w: 108.7, h: 205.3 },   // object space (42,9)  308x577
+  plate:   { x: 368.4, y: 331.0, w: 31.8,  h: 209.9 },   // object space (205,0) 90x590
+  mask:    { x: 296,   y: 331,   w: 104.2, h: 211.0 },   // object space (0,0)   295x593
+};
+
+// The slot the ceiling beam is revealed through, straight off the PSD's `mask` rectangle:
+// (393,210) to (512,321). Only the x range is taken from it. The rect is 18 px higher than the
+// beam and 3 px shorter, so masking vertically with it as drawn would shave off the bottom lip
+// the beam hangs into the niche — the one part of it the player actually reads as a ceiling.
+const CEILING_SLOT = { x0: 393, x1: 512 };
+const CEILING_SEAL_T = 0.45;
+
+// Where the rods sit, as an offset from the pose the PSD draws them in.
+//
+// The wall's face — where a rod stops being buried in stone and starts being a spike. Both the
+// mask and the hand-over to the 3D layer hinge on it; see liftSpikeTips.
+const SPIKE_FACE = 400.2;
+
+// The wall's face is at x 400.2 and the authored tips reach 419.5, so -19.3 would sit them
+// FULLY home, level with the stone and invisible. They do not start there. Zero is the pose the
+// design comp draws — the whole bank already out, which is how the trap reads as a threat from
+// the first frame rather than as seven holes that fill in later.
+//
+// The two numbers are tuned against each other, not independently: HOME sets where they start
+// and CREEP is whatever is left to reach +10 at full pressure, so moving the start does not
+// drag the far end with it.
+const SPIKE_HOME = 0;
+const SPIKE_CREEP = 30;
+
+// The kill. Half the width of the man, in a tenth of a second — the rods have 57 units of tail
+// left inside the wall at that point, so nothing runs out of shaft.
+const SPIKE_SLAM = 45;
+const SPIKE_SLAM_T = 0.09;
 
 export class Scene {
   static async create() {
-    const names = [...BEHIND, ...FRONT, 'pillar'];
-    const urls = [BG_URL, ...names.map((n) => layer(n)?.url).filter(Boolean)];
+    const urls = [
+      BG_URL,
+      layer('pillar')?.url,
+      // The trap's pieces are placed from TRAP rather than from the manifest, so they go
+      // through url() — layer() insists on a manifest entry and would drop every one of them.
+      ...['top_walls', 'top_walls_ceilling', 'spikes_body_back', 'spikes',
+        'spikes_body_top', 'spikes_mask'].map((n) => url(n)),
+    ].filter(Boolean);
     await PIXI.Assets.load(urls);
     return new Scene();
   }
@@ -71,14 +119,33 @@ export class Scene {
   constructor() {
     this.root = new PIXI.Container();
 
-    // Backdrop: four static PSD layers baked into one opaque image offline. They never
-    // animate, so shipping them separately was ~10 MB of pure overdraw.
+    // On a viewport too tall for the backdrop to cover (Layout.cropped — a narrow phone in
+    // portrait), there is nothing above document y 0 and the page colour shows through as a
+    // lighter band along the top edge. The backdrop is NOT moved up to close it: it is a bake
+    // of static PSD layers that the pillar, door and plates are placed against in document
+    // coordinates, so sliding it would misalign every one of them. Instead its own top row is
+    // stretched upward, which matches column for column — there is no seam at y 0 to find.
+    // A full document height of it covers the band at any aspect ratio the layout can produce.
+    const bgTex = PIXI.Texture.from(BG_URL);
+    this.bgTop = new PIXI.Sprite(new PIXI.Texture({
+      source: bgTex.source,
+      frame: new PIXI.Rectangle(0, 0, bgTex.width, 1),
+    }));
+    this.bgTop.x = 0;
+    this.bgTop.y = -DOC.height;
+    this.bgTop.width = DOC.width;
+    this.bgTop.height = DOC.height;
+    this.root.addChild(this.bgTop);
+
+    // Backdrop: six static PSD layers flattened into one opaque image in Photoshop — the walls,
+    // the fog, and the doorway assembly with them. They never animate, so shipping them
+    // separately was ~10 MB of pure overdraw.
     this.bg = PIXI.Sprite.from(BG_URL);
     this.bg.width = DOC.width;
     this.bg.height = DOC.height;
     this.root.addChild(this.bg);
 
-    for (const name of BEHIND) this.root.addChild(this._place(name));
+    this._buildTrap();
 
     this.pillar = this._place('pillar');
     this.root.addChild(this.pillar);
@@ -89,14 +156,14 @@ export class Scene {
     this.collapsed = false;
     this._collapsedLeft = 0;
 
-    // game.js drops the hero in here — in front of the pillar he is bracing against, behind
-    // the doorway, exactly where hero_placeholder sits in the PSD.
+    // game.js drops the hero in here — in front of the pillar he is bracing against, exactly
+    // where hero_placeholder sits in the PSD. The doorway used to be drawn over him from a
+    // FRONT list; it is in the backdrop now, and he is never near it until the rope carries
+    // him out over the top of everything.
     this.heroSlot = new PIXI.Container();
     this.root.addChild(this.heroSlot);
 
-    for (const name of FRONT) this.root.addChild(this._place(name));
-
-    // ...and the board here. The plate layers are the topmost thing in the source file.
+    // The board goes on top of everything, which is where the plate layers sit in the PSD.
     this.boardSlot = new PIXI.Container();
     this.root.addChild(this.boardSlot);
 
@@ -116,6 +183,83 @@ export class Scene {
     return s;
   }
 
+  // Same, for art whose box does not come from the manifest. The trap's pieces are placed from
+  // TRAP because four of the six are exported in the smart object's space and the manifest, by
+  // construction, only ever records document-space layer bounds.
+  _placeAt(name, b) {
+    const u = url(name);
+    if (!u) return new PIXI.Container();
+    const s = PIXI.Sprite.from(u);
+    s.x = b.x;
+    s.y = b.y;
+    s.width = b.w;
+    s.height = b.h;
+    s.label = name;
+    return s;
+  }
+
+  // The wall, its ceiling, and the spikes in it. Back to front, which is the PSD's own order:
+  //
+  //   walls      the two bars that frame the niche
+  //   ceiling    the beam that seals it, revealed left to right after he lands
+  //   recess     the dark socket well the rods sit in
+  //   rods       the seven spikes — THE thing that moves
+  //   plate      the socket plate, in front of the rods so they emerge through its mouths
+  //
+  // The rods are masked by the wall's own silhouette, INVERSE: the mask is opaque where the
+  // stone is and punched through at the seven sockets, so 1-alpha is exactly "where a rod may
+  // show". Outside the mask's rect the shader's clip term is 0, which inverts to 1 — so the
+  // tips stay visible however far out they are driven, without the mask having to be a mile
+  // wide. It has to be a Sprite (Pixi routes anything else to the stencil, which cannot read
+  // alpha) and a sibling of the rods, not a child, or it would travel with them.
+  _buildTrap() {
+    this.trap = new PIXI.Container();
+    this.root.addChild(this.trap);
+
+    this.trap.addChild(this._placeAt('top_walls', TRAP.walls));
+
+    this.ceiling = this._placeAt('top_walls_ceilling', TRAP.ceiling);
+    this.trap.addChild(this.ceiling);
+    // Drawn at full size and scaled in x, so the wipe never re-tessellates the rect.
+    this.ceilingMask = new PIXI.Graphics()
+      .rect(0, 0, CEILING_SLOT.x1 - CEILING_SLOT.x0, TRAP.ceiling.h)
+      .fill(0xffffff);
+    this.ceilingMask.x = CEILING_SLOT.x0;
+    this.ceilingMask.y = TRAP.ceiling.y;
+    this.trap.addChild(this.ceilingMask);
+    this.ceiling.mask = this.ceilingMask;
+    this.openCeiling();
+
+    this.trap.addChild(this._placeAt('spikes_body_back', TRAP.recess));
+
+    // Two masks, nested, because the wall silhouette alone is not enough. Pulled all the way
+    // home the rods are 4.5 units longer than the mask is wide, and an inverse mask shows
+    // everything outside its own rect — so the tails came out the far side of it and lay in
+    // slivers across the outer wall. The outer clip is that rect's left edge continued to the
+    // edge of the document: nothing of the mechanism exists left of the wall it is set in.
+    this.spikeClip = new PIXI.Container();
+    this.spikes = new PIXI.Container();
+    this.rods = this._placeAt('spikes', TRAP.rods);
+    this.spikes.addChild(this.rods);
+    this.spikeClip.addChild(this.spikes);
+    this.trap.addChild(this.spikeClip);
+
+    this.spikeShaft = new PIXI.Graphics();
+    this._drawShaft(DOC.width);
+    this.trap.addChild(this.spikeShaft);
+    this.spikeClip.mask = this.spikeShaft;
+
+    const maskArt = this._placeAt('spikes_mask', TRAP.mask);
+    this.trap.addChild(maskArt);
+    if (maskArt instanceof PIXI.Sprite) {
+      this.spikes.setMask({ mask: maskArt, inverse: true, channel: 'alpha' });
+    }
+
+    this.trap.addChild(this._placeAt('spikes_body_top', TRAP.plate));
+
+    this.setSpikes(0);
+  }
+
   // 0..1 — how far the rubble has driven the pillar, not how hard it is pressing right now.
   // Everything the threat does visually is this one line.
   setPush(p) {
@@ -129,6 +273,93 @@ export class Scene {
 
   // The hero is braced against the pillar, so he rides the same offset.
   get pushOffset() { return -this.push * PILLAR_TRAVEL; }
+
+  _drawShaft(right) {
+    this.spikeShaft.clear()
+      .rect(TRAP.mask.x, 0, right - TRAP.mask.x, DOC.height)
+      .fill(0xffffff);
+  }
+
+  // The rods are ONE thing in two renderers. Everything past the wall's face has to draw in
+  // front of the hero, and Pixi cannot: the rig is on a canvas above the whole display list. So
+  // the emerged part is handed to a quad in the hero's own layer, clipped at that same face,
+  // and Pixi's copy is cut back to the face in the same breath — what is left of it is the
+  // slivers showing through the socket mouths, which is exactly the part he never covers.
+  //
+  // No-op without a rig: there is nothing in front to get past, and the Pixi rods stay whole.
+  liftSpikeTips(rig) {
+    if (!rig || this._tips) return;
+    this._tips = rig.addOverlay({ url: url('spikes'), rect: TRAP.rods, clipLeft: SPIKE_FACE });
+    if (!this._tips) return;
+    this._drawShaft(SPIKE_FACE);
+    this._setRods(this.rods.x - TRAP.rods.x);
+  }
+
+  // The tips are on the hero's canvas, which sits above every Pixi overlay — so the end card and
+  // its scrim pass under them exactly as they pass under him. He is taken off by Hero.fadeOut;
+  // this is the same beat, for the same reason, and the Pixi rods behind are already cut back to
+  // the wall's face, so what is left when they go is a wall with seven sockets in it.
+  fadeSpikeTips(duration = 0.3) {
+    if (!this._tips) return;
+    this._tipFade?.kill();
+    const at = { a: 1 };
+    this._tipFade = gsap.to(at, {
+      a: 0, duration, ease: 'power1.in', onUpdate: () => this._tips.setOpacity(at.a),
+    });
+  }
+
+  // One offset, both copies, always — they are the same rods.
+  _setRods(offset) {
+    this.rods.x = TRAP.rods.x + offset;
+    this._tips?.setOffsetX(offset);
+  }
+
+  // 0..1 — the same number the pillar rides, so the two halves of the threat cannot disagree.
+  // The rods creep out of the wall as he loses ground; by the time he is against them they are
+  // past the pose the design comp draws.
+  setSpikes(p) {
+    if (this._slammed) return;   // nothing outranks the kill
+    const k = Math.min(1, Math.max(0, p));
+    this._setRods(SPIKE_HOME + SPIKE_CREEP * k);
+  }
+
+  // The crush. They go the rest of the way, hard, and stay there.
+  slamSpikes() {
+    if (this._slammed) return gsap.timeline();
+    this._slammed = true;
+    const at = { o: this.rods.x - TRAP.rods.x };
+    this._slam = gsap.to(at, {
+      o: SPIKE_HOME + SPIKE_CREEP + SPIKE_SLAM,
+      duration: SPIKE_SLAM_T,
+      ease: 'power3.in',
+      onUpdate: () => this._setRods(at.o),
+    });
+    return this._slam;
+  }
+
+  // The chamber seals itself once he is in it: the beam slides out of the left wall and closes
+  // the slot he fell through. It is the mask that moves, not the beam — the beam's own right
+  // end is a cut face, so uncovering it left to right IS the slab extruding.
+  sealCeiling(duration = CEILING_SEAL_T) {
+    gsap.killTweensOf(this.ceilingMask.scale);
+    return gsap.to(this.ceilingMask.scale, { x: 1, duration, ease: 'power2.out' });
+  }
+
+  openCeiling() {
+    gsap.killTweensOf(this.ceilingMask.scale);
+    this.ceilingMask.scale.x = 0;
+  }
+
+  // A retry does not re-drop him, so the ceiling stays shut; only the spikes go home.
+  restoreTrap() {
+    this._slam?.kill();
+    this._tipFade?.kill();
+    this._tips?.setOpacity(1);
+    this._slammed = false;
+    this.setSpikes(0);
+    gsap.killTweensOf(this.ceilingMask.scale);
+    this.ceilingMask.scale.x = 1;
+  }
 
   // The face the rubble bears against. The debris shaft is bounded by this rather than by the
   // board edge, so the mass stays in contact with the pillar as it is driven back — otherwise

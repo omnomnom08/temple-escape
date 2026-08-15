@@ -43,8 +43,15 @@ const ROPE_BLEND = 0.15;   // clip cross-fade, and the ramp that hides the hang 
 // down by the same 68, because this shifts the whole arc rather than reshaping it.
 const ROPE_HANG = 68;
 
+// Hand offset at the first frame of the rope clip, from his standing x and the ground line.
+// Measured, with ROPE_HANG already applied — see ropeGrabPoint().
+const GRAB_DX = 48;
+const GRAB_DY = -161;
+
 export class Hero {
-  constructor({ stage, x, footY, height = 200, stageW = Infinity, stageH = 0 }) {
+  constructor({
+    stage, x, footY, height = 200, stageW = Infinity, stageH = 0, onRig = null, onImpact = null,
+  }) {
     this.h = height;
     this.w = height * 0.42;
     // Keep the whole figure on screen even when the requested spot hugs the left edge.
@@ -62,6 +69,12 @@ export class Hero {
     this._onLanded = null;
     this._opacity = 1;   // one dial over both bodies — see _applyOpacity
     this._layout = null; // last viewport seen; replayed onto the rig when it arrives
+    // Fired once, if and when the rig lands. Anything that needs to draw IN FRONT of him has to
+    // live in his layer, and until this fires there is no layer to put it in.
+    this._onRig = onRig;
+    // The frame his feet plant — see update(). Separate from _onLanded, which is the end of the
+    // whole drop including the squash.
+    this._onImpact = onImpact;
 
     this._buildPlaceholder();
     this._loadRig();
@@ -70,8 +83,22 @@ export class Hero {
   // The rig arrives async and replaces the placeholder. Deliberately not awaited by anything:
   // the drop-in runs off update(dt), so a rig that never loads cannot stall the state machine.
   async _loadRig() {
-    const url = modelURL('hero');
-    if (!url) return;
+    // hero2, not hero: same skeleton, same six clips keyframe for keyframe, same 2.04u body —
+    // a re-export with the mesh cleaned up, so every measurement taken off the first one still
+    // holds. The superseded `hero.glb` has been deleted; if it is ever restored, keep it OUT of
+    // assets/art/, because art.js globs every .glb below that eagerly — used or not, it lands in
+    // the bundle.
+    const url = modelURL('hero2');
+    if (!url) {
+      // Never silently, because the fallback is a painted man who looks enough like the rig to
+      // pass. The usual cause is not a missing file at all: art.js finds rigs with
+      // import.meta.glob, which resolves when the module is transformed, and Vite's watcher
+      // covers its root — assets/ is a level above it. A rig dropped in beside a RUNNING dev
+      // server is therefore invisible to it until the server is restarted.
+      console.warn('[hero] no rig named hero2 — keeping the 2D placeholder. ' +
+        'If the file exists, restart the dev server: assets/ is outside Vite\'s watch root.');
+      return;
+    }
     const { create } = await import('./hero3d.js');
     const rig = await create({
       modelUrl: url,
@@ -90,6 +117,7 @@ export class Hero {
     this._syncRig();
     // Loading can outlast the drop. If it did not, he still owes us a landing.
     if (!this.landed) rig.playOnce('land', { fade: 0 });
+    this._onRig?.(rig);
   }
 
   // Called by game.js on every layout change, rig or no rig.
@@ -132,10 +160,24 @@ export class Hero {
     this.rig?.place(this.root.x, this.root.y);
   }
 
+  // Hold the pose he is in and stop answering to fatigue — for the outro, where the pillar going
+  // over would otherwise walk him back through every idle on the way to the rope. See
+  // hero3d.holdPose. Released by place(), i.e. on a retry.
+  holdPose(on = true) {
+    this.rig?.holdPose(on);
+  }
+
   // 0..1, how far gone he is — steps him through the three stamina phases. No-op until the rig
   // loads, which is why game.js can call it unconditionally.
   setFatigue(p) {
     this.rig?.setFatigue(p);
+  }
+
+  // Which phase that landed him in — 0, 1 or 2 — or null on a build with no rig, where there
+  // are no poses to be in and nothing to sync to. The rig owns this because the rig owns the
+  // hysteresis; see hero3d's `phase`.
+  get fatiguePhase() {
+    return this.rig ? this.rig.phase : null;
   }
 
   // He is braced against the pillar, so he travels with it as the rubble drives it left.
@@ -202,6 +244,39 @@ export class Hero {
     });
   }
 
+  // Where he is on screen, and where his hands are, both in document units. `x` is where he is
+  // BRACED, which is not the same thing — the pillar pushes him and the rig stands him off by
+  // its own phase offset on top of that. Anything aiming at him wants these, not `x`.
+  get bodyX() {
+    return this.rig ? this.rig.worldX : this.root.x;
+  }
+
+  // The centre of him RIGHT NOW, which is not footY: during the drop-in root.y is wherever the
+  // fall has got to, and footY is only where it ends. Anything aiming a camera at him wants this.
+  get bodyY() {
+    return this.root.y - this.h / 2;
+  }
+
+  // Where his hands WILL be on the first frame of the escape — which is not somewhere handPoint()
+  // can report, because until the clip has the body they are still braced against the pillar.
+  //
+  // Measured off hero.glb rather than estimated: the rig posed at the rope clip's start, sitting
+  // at footY + ROPE_HANG, puts the hand 48 units downstage of his standing x and 161 above the
+  // ground line. Both offsets are properties of the clip, so they follow him wherever he stands
+  // and only need remeasuring if the animation is re-exported.
+  //
+  // This exists because the rope has to be the right LENGTH before he takes hold of it. Guessing
+  // put the anchor 720 from his hands when the truth is 790, and the rope visibly changed size
+  // at the grab.
+  ropeGrabPoint() {
+    if (!this.rig) return null;
+    return { x: this.bodyX + GRAB_DX, y: this.footY + GRAB_DY };
+  }
+
+  handPoint() {
+    return this.rig?.handPoint() ?? null;
+  }
+
   _applyOpacity() {
     this.root.alpha = this._opacity;
     this.rig?.setOpacity(this._opacity);
@@ -255,8 +330,14 @@ export class Hero {
 
   update(dt) {
     if (!this.landed) {
+      const was = this.t;
       this.t = Math.min(TOTAL, this.t + dt);
       this._apply();
+      // IMPACT is T_FALL, not `landed`. `landed` is TOTAL — 0.22s later, once the squash and the
+      // recovery have played out — and dust that arrives after he has finished bouncing is dust
+      // from a second landing. Detected as a CROSSING here rather than inside _apply, because
+      // place() drives _apply straight to TOTAL on a retry and must not throw any.
+      if (was < T_FALL && this.t >= T_FALL) this._onImpact?.();
       if (this.landed && this._onLanded) {
         const done = this._onLanded;
         this._onLanded = null;

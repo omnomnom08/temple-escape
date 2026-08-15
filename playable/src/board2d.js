@@ -1198,6 +1198,22 @@ export class Board2D {
     return h ? [h.a, h.b] : [];
   }
 
+  // Every cell that currently holds a gem. The tutorial's glint wanders over these, and it
+  // cannot just walk the grid: the board is full while the hint is up, but nothing guarantees
+  // that, and a sparkle lit on an empty plate would be a highlight on nothing.
+  liveCells() {
+    const out = [];
+    for (let r = 0; r < this.ROWS; r++)
+      for (let c = 0; c < this.COLS; c++) if (this.gemAt[r][c]) out.push({ r, c });
+    return out;
+  }
+
+  // The display object in a cell, or null. The tutorial glint parents itself to this so it rides
+  // the gem's own transform — including the 1.2 pulse showHint puts on the two hint gems.
+  gemSprite(r, c) {
+    return this.gemAt[r]?.[c] ?? null;
+  }
+
   showHint() {
     this.hideHint();
     this._hintTweens = this.hintCells()

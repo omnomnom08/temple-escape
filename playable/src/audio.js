@@ -37,6 +37,9 @@ import stone4 from '../../assets/audio/stone_4.mp3?url';
 import timer from '../../assets/audio/timer.mp3?url';
 import whoosh from '../../assets/audio/whoosh.mp3?url';
 import winSting from '../../assets/audio/win.mp3?url';
+import manStruggle from '../../assets/audio/man_struggle.mp3?url';
+import manHappy from '../../assets/audio/man_happy.mp3?url';
+import heartbeat from '../../assets/audio/heartbeat.mp3?url';
 
 const FILES = {
   merge_complete_0: merge0, merge_complete_1: merge1, merge_complete_2: merge2,
@@ -49,6 +52,9 @@ const FILES = {
   timer,
   whoosh,
   win: winSting,
+  man_struggle: manStruggle,
+  man_happy: manHappy,
+  heartbeat,
 };
 
 // name -> the clips that may play for it. Arrays round-robin, EXCEPT `match`, which is a
@@ -75,6 +81,16 @@ const BANK = {
   winCheer: ['endcard'],
   door: ['door_lift_1'],
   fail: ['door_fall_0'],
+  // The man himself. These are the only two sounds in the round that come from HIM rather than
+  // from stone, so they are mixed to sit on top of the bed instead of inside it.
+  struggle: ['man_struggle'],   // he loses a stamina phase — see playStruggle
+  ropeGrab: ['man_happy'],      // he gets a hand on the rope
+  // Deliberately NOT in LOOPS, even though it repeats for as long as the panic lasts. The three
+  // loops below are BEDS, held open because re-attacking their first frame would click. This one
+  // is a RHYTHM: one lub-dub, at 0.04s and 0.30s, silent from 0.815s to its end. Re-attacking is
+  // the whole point of it, and firing it as a one-shot is what lets the caller put the red frame's
+  // pulse on the same clock — see the game's panic timeline.
+  heartbeat: ['heartbeat'],
 };
 
 // Sounds that are held rather than fired. Each is one BufferSource that starts when the
@@ -100,6 +116,11 @@ const RUMBLE_TAIL = 1.3;   // seconds to silence, if no further flow is reported
 // short enough that a fresh look at the board starts the climb again.
 const MERGE_RESET = 2.5;
 
+// The shortest gap allowed between two grunts. The clip is 1.38s and it is a voice: two of them
+// overlapping is one man twice, which is worse than a missed cue. Comfortably longer than the
+// clip, so a second phase loss during the first grunt is dropped rather than stacked.
+const STRUGGLE_GAP = 2.0;
+
 const urlFor = (base) => FILES[base] ?? null;
 
 export class Audio {
@@ -112,6 +133,7 @@ export class Audio {
     this._flow = 0;
     this._mergeStep = 0;
     this._lastMatchT = -Infinity;
+    this._lastStruggleT = -Infinity;
   }
 
   // Created suspended; the first user gesture resumes it. Safe to call more than once.
@@ -228,6 +250,17 @@ export class Audio {
     g.gain.value = 0.8;
     src.connect(g).connect(this.master);
     src.start();
+  }
+
+  // The grunt, on the frame he drops a stamina phase. Rate-limited here rather than at the call
+  // site because the limit is a property of the CLIP (a voice, 1.38s long) and not of whatever
+  // decides he is tiring — the same guard has to hold if the trigger is ever retuned.
+  playStruggle() {
+    if (!this.ready || this.muted || !this.ctx) return;
+    const now = this.ctx.currentTime;
+    if (now - (this._lastStruggleT ?? -Infinity) < STRUGGLE_GAP) return;
+    this._lastStruggleT = now;
+    this.play('struggle', { volume: 0.75 });
   }
 
   // Called by the debris sim with HOW MANY ROCKS are falling fast right now — a count, not a
